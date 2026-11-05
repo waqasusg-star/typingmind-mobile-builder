@@ -102,7 +102,13 @@ async function mobile_builder_build_status(params,settings){
  if(!Number.isSafeInteger(Number(id))||Number(id)<1)throw new Error('Invalid run ID.');
  const run=await c.api(c.base+'/actions/runs/'+id);if(run.path!=='.github/workflows/mobile-builder.yml')throw new Error('This is not a Mobile App Builder run.');
  const jobs=await c.api(c.base+'/actions/runs/'+id+'/jobs?per_page=100'),artifacts=await c.api(c.base+'/actions/runs/'+id+'/artifacts?per_page=100');
- return mb_json({status:run.status,conclusion:run.conclusion,run_id:run.id,url:run.html_url,workflow_commit:run.head_sha,jobs:jobs.jobs.map(j=>({name:j.name,status:j.status,conclusion:j.conclusion,failed_steps:(j.steps||[]).filter(s=>s.conclusion==='failure').map(s=>s.name),url:j.html_url})),artifacts:artifacts.artifacts.filter(a=>!a.expired).map(a=>({id:a.id,name:a.name,size_bytes:a.size_in_bytes,expires_at:a.expires_at,url:c.web+'/actions/runs/'+id+'/artifacts/'+a.id})),note:'A skipped/missing platform is not successful app delivery. Read Build-Readiness and the actual package report. Workflow commit is not necessarily the source_sha that was built.'});
+ const releases=[],identity=/^Mobile Builder \/ ([a-z][a-z0-9_]{1,39}) \/ ([A-Za-z0-9][A-Za-z0-9_-]{5,63})$/.exec(run.display_title||'');
+ if(identity)for(const platform of ['android','ios']){
+  try{const release=await c.api(c.base+'/releases/tags/'+encodeURIComponent('builds/'+identity[1]+'/'+identity[2]+'/'+platform));
+   if(!release.draft)releases.push({platform,url:release.html_url,downloads:(release.assets||[]).filter(a=>/\.(apk|ipa|json|txt)$/.test(a.name)).map(a=>({name:a.name,url:a.browser_download_url,size_bytes:a.size,digest:a.digest})),automatic_expiry:false});
+  }catch(e){if(e.status!==404)throw e;}
+ }
+ return mb_json({status:run.status,conclusion:run.conclusion,run_id:run.id,url:run.html_url,workflow_commit:run.head_sha,jobs:jobs.jobs.map(j=>({name:j.name,status:j.status,conclusion:j.conclusion,failed_steps:(j.steps||[]).filter(s=>s.conclusion==='failure').map(s=>s.name),url:j.html_url})),releases,artifacts:artifacts.artifacts.filter(a=>!a.expired).map(a=>({id:a.id,name:a.name,size_bytes:a.size_in_bytes,expires_at:a.expires_at,url:c.web+'/actions/runs/'+id+'/artifacts/'+a.id})),note:'Use published release downloads for links without automatic artifact expiry. Diagnostic artifacts expire after 14 days. A skipped/missing platform is not successful app delivery. Read Build-Readiness and the actual package report. Workflow commit is not necessarily the source_sha that was built.'});
 }
 function mb_crc(bytes){let crc=0xffffffff;for(const b of bytes){crc^=b;for(let i=0;i<8;i++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}return(crc^0xffffffff)>>>0;}
 async function mb_unzip(bytes,cap){

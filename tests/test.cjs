@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),crypto=require('node:crypto'),zlib=require('node:zlib');
-const backend={};for(const p of ['.builder/build.py','.github/workflows/mobile-builder.yml'])backend[p]=fs.readFileSync(__dirname+'/../'+p,'utf8');
+const backend={};for(const p of ['.builder/build.py','.builder/publish.py','.github/workflows/mobile-builder.yml'])backend[p]=fs.readFileSync(__dirname+'/../'+p,'utf8');
 const settings={githubOwner:'testuser',githubRepo:'builder',githubToken:'private-test-token'},sha='a'.repeat(40),tree='b'.repeat(40),next='c'.repeat(40);let calls=[],handler;
 const context=vm.createContext({TextEncoder,TextDecoder,Uint8Array,DataView,ArrayBuffer,Blob,DecompressionStream,AbortController,crypto:crypto.webcrypto,setTimeout,clearTimeout,atob,btoa,fetch:async(u,o)=>{calls.push({u,o});return handler(u,o);}});
 vm.runInContext(fs.readFileSync(__dirname+'/../typingmind-plugin/plugin.js','utf8')+'\nconst MB_BACKEND='+JSON.stringify(backend)+';',context);
@@ -33,6 +33,14 @@ function zip(entries){let offset=0;const chunks=[],central=[];for(const[name,val
  handler=(u,o)=>u.includes('/contents/')?response({content:btoa('different backend')}):base(u,o);calls=[];await assert.rejects(()=>context.mobile_builder_install_pipeline({},settings),/differs/);assert(!calls.some(c=>c.o.method==='POST'));
  handler=(u,o)=>{const p=new URL(u).pathname;if(p.endsWith('/mobile-builder.yml/runs'))return response({workflow_runs:[]});if(p.includes('/contents/'))return response({content:Buffer.from(backend[decodeURIComponent(p.split('/contents/')[1])]||'{}','utf8').toString('base64')});if(p.endsWith('/dispatches'))throw new DOMException('Timeout','AbortError');return base(u,o);};
  const uncertain=JSON.parse(await context.mobile_builder_start_build({project_id:'test_app',platform:'both',request_id:'request_test01',source_sha:sha},settings));assert.equal(uncertain.status,'submission_unknown');
+ handler=(u,o)=>{const p=new URL(u).pathname;
+  if(p.endsWith('/runs/10'))return response({path:'.github/workflows/mobile-builder.yml',id:10,status:'completed',conclusion:'success',display_title:'Mobile Builder / test_app / request01'});
+  if(p.endsWith('/jobs'))return response({jobs:[]});
+  if(p.endsWith('/artifacts'))return response({artifacts:[]});
+  if(p.includes('/releases/tags/')&&decodeURIComponent(p).endsWith('/android'))return response({draft:false,html_url:'https://github.com/testuser/builder/releases/tag/builds/test_app/request01/android',assets:[{name:'test_app-android.apk',browser_download_url:'https://github.com/testuser/builder/releases/download/builds/test_app/request01/android/test_app-android.apk',size:20}]});
+  return response({message:'Not found'},404);
+ };
+ const durable=JSON.parse(await context.mobile_builder_build_status({run_id:10},settings));assert.equal(durable.artifacts.length,0);assert.equal(durable.releases[0].automatic_expiry,false);assert(durable.releases[0].downloads[0].url.endsWith('.apk'));
  const read=await context.mb_unzip(zip([['build.log','verified error '.repeat(20)]]),10000);assert.equal(read[0].bytes.length,300);
  await assert.rejects(()=>context.mb_unzip(zip([['../bad.apk','123']]),1000),/Unsafe/);
  await assert.rejects(()=>context.mb_unzip(zip([['big.apk','a'.repeat(100)]]),50),/limit/);

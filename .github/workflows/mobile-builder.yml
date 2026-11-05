@@ -44,6 +44,32 @@ jobs:
           name: Build-Readiness-${{ inputs.request_id }}
           path: readiness/Build-Readiness.json
           retention-days: 14
+  publish:
+    name: Preserve verified app downloads
+    needs: [android, ios]
+    if: always() && (needs.android.result == 'success' || needs.ios.result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/download-artifact@v4
+        if: needs.android.result == 'success'
+        with:
+          name: Android-${{ inputs.project_id }}-${{ inputs.request_id }}
+          path: release-input/android
+      - uses: actions/download-artifact@v4
+        if: needs.ios.result == 'success'
+        with:
+          name: iOS-${{ inputs.project_id }}-${{ inputs.request_id }}
+          path: release-input/ios
+      - name: Publish hash-checked packages and reports
+        run: python3 .builder/publish.py
+        env:
+          GH_TOKEN: ${{ github.token }}
   android:
     name: Android signed APK
     needs: readiness
