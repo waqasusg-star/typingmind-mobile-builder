@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.mobileprovision
+.env
+.env.*
+output/
+readiness/

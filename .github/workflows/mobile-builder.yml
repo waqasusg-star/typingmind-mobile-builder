@@ -1,0 +1,102 @@
+name: Mobile App Builder
+run-name: Mobile Builder / ${{ inputs.project_id }} / ${{ inputs.request_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      project_id: {description: Project ID, required: true, type: string}
+      platform: {description: Platform, required: true, type: choice, options: [android, ios, both]}
+      request_id: {description: Unique request ID, required: true, type: string}
+      source_sha: {description: Exact source commit, required: true, type: string}
+permissions:
+  contents: read
+concurrency:
+  group: mobile-builder-${{ inputs.project_id }}-${{ inputs.request_id }}
+  cancel-in-progress: false
+env:
+  PROJECT_ID: ${{ inputs.project_id }}
+  PLATFORM: ${{ inputs.platform }}
+  REQUEST_ID: ${{ inputs.request_id }}
+  SOURCE_SHA: ${{ inputs.source_sha }}
+jobs:
+  readiness:
+    name: Check signing readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      android: ${{ steps.check.outputs.android }}
+      ios: ${{ steps.check.outputs.ios }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ inputs.source_sha }}', persist-credentials: false}
+      - id: check
+        run: python3 .builder/build.py readiness
+        env:
+          HAS_ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+          HAS_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD != '' }}
+          HAS_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS != '' }}
+          HAS_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD != '' }}
+          HAS_APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 != '' }}
+          HAS_APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
+          HAS_APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 != '' }}
+          HAS_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID != '' }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Build-Readiness-${{ inputs.request_id }}
+          path: readiness/Build-Readiness.json
+          retention-days: 14
+  android:
+    name: Android signed APK
+    needs: readiness
+    if: needs.readiness.outputs.android == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ inputs.source_sha }}', persist-credentials: false}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - name: Install Flutter stable
+        run: |
+          git clone --depth 1 --branch stable https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+      - name: Analyze, test, build and verify signed APK
+        run: python3 .builder/build.py android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Android-${{ inputs.project_id }}-${{ inputs.request_id }}
+          path: output/
+          if-no-files-found: error
+          retention-days: 14
+  ios:
+    name: iOS signed IPA
+    needs: readiness
+    if: needs.readiness.outputs.ios == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ inputs.source_sha }}', persist-credentials: false}
+      - name: Install Flutter stable
+        run: |
+          git clone --depth 1 --branch stable https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+      - name: Analyze, test, build and verify signed IPA
+        run: python3 .builder/build.py ios
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iOS-${{ inputs.project_id }}-${{ inputs.request_id }}
+          path: output/
+          if-no-files-found: error
+          retention-days: 14
