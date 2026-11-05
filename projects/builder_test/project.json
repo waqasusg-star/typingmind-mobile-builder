@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "project_id": "builder_test",
+  "app_name": "Builder Test",
+  "bundle_id": "com.worldgate.buildertest",
+  "description": "Minimal real Flutter counter app used to verify the Mobile App Builder pipeline end to end. No external APIs, no client data."
+}
