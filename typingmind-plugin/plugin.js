@@ -1,6 +1,6 @@
 function mb_context(settings={}) {
  const owner=String(settings.githubOwner||'').trim(),repo=String(settings.githubRepo||'').trim(),token=String(settings.githubToken||'').trim(),branch=String(settings.githubBranch||'main').trim();
- if(!/^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/.test(owner)||!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/.test(repo))throw new Error('Choose your GitHub owner and dedicated private builder repository in Settings.');
+ if(!/^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/.test(owner)||!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/.test(repo))throw new Error('Choose your GitHub owner and dedicated builder repository in Settings.');
  if(!token)throw new Error('Enter a repository-scoped GitHub token in the plugin password setting, never in chat.');
  if(!/^[A-Za-z0-9][A-Za-z0-9_/.-]{0,99}$/.test(branch)||branch.includes('..')||branch.includes('//'))throw new Error('Invalid branch.');
  const base='/repos/'+owner+'/'+repo,web='https://github.com/'+owner+'/'+repo;
@@ -22,13 +22,13 @@ function mb_context(settings={}) {
   }catch(e){if(e.name==='AbortError')throw new Error('Request timed out; a write or build may have completed. Check status before retrying.');throw e;}
   finally{clearTimeout(timer);}
  }
- return{owner,repo,branch,base,web,cap,clean,api};
+ return{owner,repo,branch,base,web,cap,clean,api,allowPublic:settings.allowPublicSource==='on'};
 }
 function mb_id(value){if(typeof value!=='string'||!/^[a-z][a-z0-9_]{1,39}$/.test(value))throw new Error('Project ID must start with a lowercase letter and contain 2–40 lowercase letters, digits or underscores.');return value;}
 function mb_path(path){if(typeof path!=='string'||path.length>200||path.includes('\\')||path.includes('\0')||path.split('/').some(x=>!x||x==='.'||x==='..')||!/^(lib\/|test\/|assets\/|pubspec\.yaml$|analysis_options\.yaml$|README\.md$)/.test(path)||/\.(?:p12|pfx|jks|keystore|mobileprovision|pem|key)$/i.test(path))throw new Error('Use safe Flutter lib/, test/, assets/ text paths or supported project-root files. No signing files.');return path;}
 function mb_text(value){return new TextDecoder().decode(Uint8Array.from(atob(value.replace(/\s/g,'')),c=>c.charCodeAt(0)));}
 function mb_json(value){return JSON.stringify(value,null,2);}
-async function mb_private(c){const r=await c.api(c.base);if(!r.private)throw new Error('Use a dedicated private repository.');return r;}
+async function mb_repository(c){const r=await c.api(c.base);if(!r.private&&!c.allowPublic)throw new Error('Public source is disabled. Enable Allow public app source only if you want source, logs and build artifacts to be publicly accessible.');if(r.full_name&&r.full_name.toLowerCase()!==(c.owner+'/'+c.repo).toLowerCase())throw new Error('Repository identity differs from the configured owner/name.');return r;}
 async function mb_head(c){const r=await c.api(c.base+'/git/ref/heads/'+c.branch.split('/').map(encodeURIComponent).join('/'));const commit=await c.api(c.base+'/git/commits/'+r.object.sha);return{sha:r.object.sha,tree:commit.tree.sha};}
 async function mb_file(c,path,ref){return c.api(c.base+'/contents/'+path.split('/').map(encodeURIComponent).join('/')+'?ref='+encodeURIComponent(ref));}
 async function mb_commit(c,head,files,message){
@@ -38,18 +38,18 @@ async function mb_commit(c,head,files,message){
 }
 function mobile_builder_setup_status(params,settings={}){
  let deflate=false;try{new DecompressionStream('deflate-raw');deflate=true;}catch(_){}
- return mb_json({plugin:'Mobile App Builder',token_configured:!!String(settings.githubToken||'').trim(),owner_configured:!!settings.githubOwner,repository_configured:!!settings.githubRepo,browser_artifact_extraction_supported:deflate,connection_verified:false,
-  required:'A dedicated private GitHub repository initialized with a README; repository-scoped Contents/Actions read-write access, plus Workflows write for pipeline installation.',
+ return mb_json({plugin:'Mobile App Builder',token_configured:!!String(settings.githubToken||'').trim(),owner_configured:!!settings.githubOwner,repository_configured:!!settings.githubRepo,browser_artifact_extraction_supported:deflate,public_source_enabled:settings.allowPublicSource==='on',connection_verified:false,
+  required:'A dedicated GitHub repository initialized with a README; repository-scoped Contents/Actions read-write access, plus Workflows write for pipeline installation.',
   signing:'Persistent Android release signing secrets; Apple Distribution certificate plus a matching unexpired ad hoc provisioning profile covering the target iPhone.',
   note:'Offline check only. ChatGPT GitHub access is separate from TypingMind. No native compilation or live build has been verified by this check. Never paste credentials in chat.'});
 }
 async function mobile_builder_connect(params,settings){
- const c=mb_context(settings),r=await mb_private(c);let installed=false;
+ const c=mb_context(settings),r=await mb_repository(c);let installed=false;
  try{const f=await mb_file(c,'.github/workflows/mobile-builder.yml',c.branch);installed=mb_text(f.content)===MB_BACKEND['.github/workflows/mobile-builder.yml'];}catch(e){if(e.status!==404)throw e;}
- return mb_json({status:'connected',repository:r.full_name,pipeline_verified:installed,url:c.web,signing_readiness:'Checked by workflow presence checks and actual signing validation. Secret values are never read by this plugin.'});
+ return mb_json({status:'connected',repository:r.full_name,visibility:r.private?'private':'public',pipeline_verified:installed,url:c.web,signing_readiness:'Checked by workflow presence checks and actual signing validation. Secret values are never read by this plugin.'});
 }
 async function mobile_builder_install_pipeline(params,settings){
- const c=mb_context(settings);await mb_private(c);const head=await mb_head(c),files=[];
+ const c=mb_context(settings);await mb_repository(c);const head=await mb_head(c),files=[];
  if(params.expected_commit&&params.expected_commit!==head.sha)throw new Error('Branch changed. Read the latest state first.');
  for(const [path,content]of Object.entries(MB_BACKEND)){
   try{const f=await mb_file(c,path,head.sha);if(mb_text(f.content)!==content)throw new Error('Existing builder file differs; review it before replacement: '+path);}
@@ -69,14 +69,14 @@ async function mobile_builder_save_project(params,settings){
   if(/github_pat_|ghp_|sk-[a-fA-F0-9]{24,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(f.content))throw new Error('Potential credential detected. Use secrets/configuration, not source.');
   return{path:'projects/'+id+'/'+path,content:f.content};});
  if(total>2097152)throw new Error('Source save exceeds 2 MiB.');
- await mb_private(c);const head=await mb_head(c);if(params.expected_commit&&params.expected_commit!==head.sha)throw new Error('Repository changed. Read the latest source before editing.');
+ await mb_repository(c);const head=await mb_head(c);if(params.expected_commit&&params.expected_commit!==head.sha)throw new Error('Repository changed. Read the latest source before editing.');
  let exists=false;try{await mb_file(c,'projects/'+id+'/project.json',head.sha);exists=true;}catch(e){if(e.status!==404)throw e;}
  if(!exists&&!seen.has('lib/main.dart'))throw new Error('A new app requires its actual lib/main.dart implementation.');
  files.push({path:'projects/'+id+'/project.json',content:mb_json({schema:1,project_id:id,app_name:params.app_name.trim(),bundle_id:params.bundle_id,description:String(params.description||'').slice(0,2000)})+'\n'});
  const sha=await mb_commit(c,head,files,'Update app '+id);return mb_json({status:'saved',project_id:id,commit:sha,file_count:files.length,url:c.web+'/tree/'+sha+'/projects/'+id,build_started:false});
 }
 async function mobile_builder_read_project(params,settings){
- const c=mb_context(settings),id=mb_id(params.project_id);await mb_private(c);const head=await mb_head(c),tree=await c.api(c.base+'/git/trees/'+head.tree+'?recursive=1');
+ const c=mb_context(settings),id=mb_id(params.project_id);await mb_repository(c);const head=await mb_head(c),tree=await c.api(c.base+'/git/trees/'+head.tree+'?recursive=1');
  if(tree.truncated)throw new Error('Repository is too large. Use a dedicated builder repository.');
  const prefix='projects/'+id+'/',listing=tree.tree.filter(f=>f.type==='blob'&&f.path.startsWith(prefix)).map(f=>({path:f.path.slice(prefix.length),size:f.size}));
  const paths=params.paths||[];if(paths.length>8)throw new Error('Read up to eight source files at once.');const files=[];
@@ -85,7 +85,7 @@ async function mobile_builder_read_project(params,settings){
 }
 async function mb_find_run(c,request){const r=await c.api(c.base+'/actions/workflows/mobile-builder.yml/runs?event=workflow_dispatch&per_page=50');return r.workflow_runs.find(x=>x.display_title&&x.display_title.endsWith(' / '+request));}
 async function mobile_builder_start_build(params,settings){
- const c=mb_context(settings),id=mb_id(params.project_id);await mb_private(c);
+ const c=mb_context(settings),id=mb_id(params.project_id);await mb_repository(c);
  if(!['android','ios','both'].includes(params.platform)||!/^[a-zA-Z0-9][a-zA-Z0-9_-]{5,63}$/.test(params.request_id||'')||!/^[a-f0-9]{40}$/.test(params.source_sha||''))throw new Error('Provide a platform, unique 6–64 character request ID and exact saved commit SHA.');
  const old=await mb_find_run(c,params.request_id);if(old)return mb_json({status:'already_submitted',run_id:old.id,url:old.html_url,request_id:params.request_id});
  const current=await mb_file(c,'.github/workflows/mobile-builder.yml',c.branch);if(mb_text(current.content)!==MB_BACKEND['.github/workflows/mobile-builder.yml'])throw new Error('Install the reviewed build pipeline first.');

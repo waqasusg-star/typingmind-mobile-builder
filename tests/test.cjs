@@ -24,8 +24,8 @@ function zip(entries){let offset=0;const chunks=[],central=[];for(const[name,val
  await assert.rejects(()=>context.mobile_builder_connect({},{}),/Settings/);assert.equal(calls.length,0);
  for(const path of ['../evil','lib/../../escape','assets/private.key','/lib/main.dart'])assert.throws(()=>context.mb_path(path));
  assert.throws(()=>context.mb_id('bad;curl'));
- handler=()=>response({private:false});await assert.rejects(()=>context.mobile_builder_connect({},settings),/private/);
- handler=base;calls=[];const project={project_id:'test_app',app_name:'Test App',bundle_id:'com.worldgate.test',files:[{path:'lib/main.dart',content:'void main() {}'}]};
+ handler=()=>response({private:false});await assert.rejects(()=>context.mobile_builder_connect({},settings),/Public source/);
+ handler=(u,o)=>u.endsWith('/testuser/builder')?response({private:false,full_name:'testuser/builder'}):base(u,o);const publicStatus=JSON.parse(await context.mobile_builder_connect({},{...settings,allowPublicSource:'on'}));assert.equal(publicStatus.visibility,'public');handler=base;calls=[];const project={project_id:'test_app',app_name:'Test App',bundle_id:'com.worldgate.test',files:[{path:'lib/main.dart',content:'void main() {}'}]};
  const saved=JSON.parse(await context.mobile_builder_save_project(project,settings));assert.equal(saved.commit,next);
  const created=JSON.parse(calls.find(c=>c.o.method==='POST'&&c.u.endsWith('/git/trees')).o.body);assert.equal(created.base_tree,tree);assert(created.tree.every(f=>f.path.startsWith('projects/test_app/')));assert.equal(JSON.parse(calls.find(c=>c.o.method==='PATCH').o.body).force,false);assert(!JSON.stringify(saved).includes(settings.githubToken));
  calls=[];await assert.rejects(()=>context.mobile_builder_save_project({...project,expected_commit:'d'.repeat(40)},settings),/changed/);assert(!calls.some(c=>c.o.method==='POST'));
@@ -44,5 +44,5 @@ function zip(entries){let offset=0;const chunks=[],central=[];for(const[name,val
  const download=await context.mobile_builder_get_download({run_id:10,artifact_id:20},settings);assert(download.content.some(c=>c.type==='resource'&&c.resource.uri.endsWith('app.apk')));
  report.files[0].sha256='0'.repeat(64);archive=zip([['app.apk',bytes],['Build-Report.json',JSON.stringify(report)]]);await assert.rejects(()=>context.mobile_builder_get_download({run_id:10,artifact_id:20},settings),/hash/);
  assert(calls.every(c=>c.u.startsWith('https://api.github.com/repos/testuser/builder')&&c.o.credentials==='omit'));
- console.log('PASS: settings/privacy, private repositories, safe paths, credential guards, atomic non-force writes, stale edits, immutable pipeline, uncertain submissions, bounded ZIP/CRC/deflate, signing-report gate, package hashes and attachment output.');
+ console.log('PASS: settings/privacy, public-source opt-in and private repositories, safe paths, credential guards, atomic non-force writes, stale edits, immutable pipeline, uncertain submissions, bounded ZIP/CRC/deflate, signing-report gate, package hashes and attachment output.');
 })().catch(e=>{console.error(e);process.exit(1)});
