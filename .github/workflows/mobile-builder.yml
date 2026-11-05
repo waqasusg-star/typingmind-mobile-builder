@@ -13,6 +13,8 @@ concurrency:
   group: mobile-builder-${{ inputs.project_id }}-${{ inputs.request_id }}
   cancel-in-progress: false
 env:
+  PYTHONUTF8: '1'
+  PYTHONIOENCODING: utf-8
   PROJECT_ID: ${{ inputs.project_id }}
   PLATFORM: ${{ inputs.platform }}
   REQUEST_ID: ${{ inputs.request_id }}

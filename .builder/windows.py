@@ -74,7 +74,7 @@ Name: "{{autoprograms}}\\{pid}"; Filename: "{{app}}\\{pid}.exe"
         report['build_result']='success'
     except Exception as e:report['error']=str(e);logs.append(str(e))
     finally:
-        (out/'Build-Report.json').write_text(json.dumps(report,indent=2));(out/'build.log').write_text('\n'.join(logs)[-120000:])
+        (out/'Build-Report.json').write_text(json.dumps(report,indent=2),encoding='utf-8');(out/'build.log').write_text('\n'.join(logs)[-120000:],encoding='utf-8')
     print('Windows result:',report['build_result'])
     if report['build_result']!='success':raise SystemExit(1)
 
