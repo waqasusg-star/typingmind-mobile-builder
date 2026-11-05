@@ -55,6 +55,10 @@ function zip(entries){let offset=0;const chunks=[],central=[];for(const[name,val
  let archive=zip([['app.apk','unit-test-bytes']]);
  handler=(u,o)=>{const p=new URL(u).pathname;if(p.endsWith('/actions/runs/10'))return response({path:'.github/workflows/mobile-builder.yml'});if(p.endsWith('/runs/10/artifacts'))return response({artifacts:[{id:20,expired:false,size_in_bytes:archive.length}]});if(p.endsWith('/artifacts/20/zip'))return new Response(archive);throw Error('Unexpected artifact request');};
  await assert.rejects(()=>context.mobile_builder_get_download({run_id:10,artifact_id:20},settings),/signing report/);
+ archive=zip([['test_app-windows-portable.zip','partial-package'],['Build-Report.json',JSON.stringify({platform:'windows',build_result:'failure',error:'Installer failed',files:[]})],['build.log','actual build failure']]);
+ const diagnostics=await context.mobile_builder_get_download({run_id:10,artifact_id:20,diagnostics_only:true},settings);
+ assert(diagnostics.content.some(c=>c.type==='text'&&c.text.includes('Installer failed')));assert(!diagnostics.content.some(c=>c.type==='resource'&&c.resource.blob));
+ await assert.rejects(()=>context.mobile_builder_get_download({run_id:10,artifact_id:20},settings),/signing report/);
  const bytes='unit-test-bytes',report={build_result:'success',signature_verified:true,files:[{name:'app.apk',sha256:crypto.createHash('sha256').update(bytes).digest('hex')}]};archive=zip([['app.apk',bytes],['Build-Report.json',JSON.stringify(report)]]);
  const download=await context.mobile_builder_get_download({run_id:10,artifact_id:20},settings);assert(download.content.some(c=>c.type==='resource'&&c.resource.uri.endsWith('app.apk')));
  report.files[0].sha256='0'.repeat(64);archive=zip([['app.apk',bytes],['Build-Report.json',JSON.stringify(report)]]);await assert.rejects(()=>context.mobile_builder_get_download({run_id:10,artifact_id:20},settings),/hash/);

@@ -159,7 +159,7 @@ async function mobile_builder_get_download(params,settings){
  if(!artifact)throw new Error('Artifact missing, expired or belongs to another build.');if(artifact.size_in_bytes>c.cap)throw new Error('Artifact exceeds download limit. Use '+url);
  let files;try{files=await mb_unzip(await c.api(c.base+'/actions/artifacts/'+params.artifact_id+'/zip','GET',undefined,true),c.cap);}catch(e){throw new Error(c.clean(e.message)+' Official artifact: '+url);}
  let report=null;try{report=JSON.parse(new TextDecoder().decode(files.find(f=>f.name==='Build-Report.json').bytes));}catch(_){}
- for(const f of files.filter(f=>/\.(apk|ipa|exe|zip)$/i.test(f.name))){
+ for(const f of files.filter(f=>!params.diagnostics_only&&/\.(apk|ipa|exe|zip)$/i.test(f.name))){
   if(!report||report.build_result!=='success')throw new Error('Package lacks a successful signing report. Read build diagnostics; it is not ready.');
   if(/\.(apk|ipa)$/i.test(f.name)&&report.signature_verified!==true)throw new Error('Mobile signature was not verified.');
   if(/\.(exe|zip)$/i.test(f.name)&&!(report.analyze_passed===true&&report.tests_passed===true&&((report.platform==='windows'&&report.installer_smoke_passed===true&&report.runtime_smoke_passed===true)||(report.platform==='extension'&&report.browser_smoke_passed===true))))throw new Error('Desktop or extension package lacks successful validation.');
