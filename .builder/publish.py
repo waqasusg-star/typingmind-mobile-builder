@@ -11,11 +11,12 @@ def verified_files(folder, platform):
     report=json.loads(report_path.read_text())
     expected={'project_id':pid,'request_id':request,'source_sha':sha,'platform':platform,'build_result':'success','analyze_passed':True,'tests_passed':True}
     if platform in {'android','ios'}:expected['signature_verified']=True
+    elif platform=='ios_unsigned':expected.update(signature_verified=False,code_signing='unsigned',requires_signing=True,install_ready=False,device_build_verified=True,package_verified=True)
     elif platform=='windows':expected.update(installer_smoke_passed=True,runtime_smoke_passed=True,code_signing='unsigned')
     elif platform=='extension':expected.update(browser_smoke_passed=True,code_signing='unpacked-extension-zip')
     else:raise ValueError('Unsupported release platform')
     if any(report.get(k)!=v for k,v in expected.items()):raise ValueError('Build report does not match this successful signed build')
-    names={'android':[pid+'-android.apk'],'ios':[pid+'-ios.ipa'],'windows':[pid+'-windows-setup.exe',pid+'-windows-portable.zip'],'extension':[pid+'-chrome-extension.zip']}[platform]
+    names={'android':[pid+'-android.apk'],'ios':[pid+'-ios.ipa'],'ios_unsigned':[pid+'-ios-unsigned.ipa'],'windows':[pid+'-windows-setup.exe',pid+'-windows-portable.zip'],'extension':[pid+'-chrome-extension.zip']}[platform]
     actual=[];packages=[]
     for name in names:
         package=folder/name
@@ -29,13 +30,13 @@ def verified_files(folder, platform):
 def main():
     repo=os.environ['GITHUB_REPOSITORY']
     if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+',repo):raise ValueError('Invalid repository')
-    for platform in ['android','ios','windows','extension']:
+    for platform in ['android','ios','ios_unsigned','windows','extension']:
         folder=Path('release-input')/platform
         if not folder.is_dir():continue
         files=verified_files(folder,platform)
         tag='builds/'+os.environ['PROJECT_ID']+'/'+os.environ['REQUEST_ID']+'/'+platform
         notes=folder/'release-notes.txt'
-        verification={'android':'Android signature verified. No physical phone tested.','ios':'Apple signature verified. Installation requires the matching registered iPhone and unexpired profile. No physical phone tested.','windows':'Installer deployment and app launch smoke tests passed on CI. Executables are unsigned; Windows may show an unknown-publisher warning.','extension':'Loaded in Chromium and behavior tests passed. ZIP requires extraction and Load unpacked, or separate Web Store review. No store publication performed.'}[platform]
+        verification={'android':'Android signature verified. No physical phone tested.','ios':'Apple signature verified. Installation requires the matching registered iPhone and unexpired profile. No physical phone tested.','ios_unsigned':'UNSIGNED iPhone device IPA. arm64 device bundle and Payload structure verified. MUST SIGN BEFORE INSTALLATION. No signing credentials or device ID were used. Upload to your compatible signing service, such as https://www.ipasigner.com/, then install the signed result. No physical phone tested.','windows':'Installer deployment and app launch smoke tests passed on CI. Executables are unsigned; Windows may show an unknown-publisher warning.','extension':'Loaded in Chromium and behavior tests passed. ZIP requires extraction and Load unpacked, or separate Web Store review. No store publication performed.'}[platform]
         notes.write_text('Built from '+os.environ['SOURCE_SHA']+'. Analysis and tests passed. '+verification+'\n\nDownloads have no automatic Actions artifact expiry. Availability depends on the repository and GitHub.\n')
         common=['--repo',repo]
         subprocess.run(['gh','release','create',tag,*map(str,files),*common,'--draft','--target',os.environ['SOURCE_SHA'],'--title',os.environ['PROJECT_ID']+' / '+platform+' / '+os.environ['REQUEST_ID'],'--notes-file',str(notes),'--latest=false'],check=True)

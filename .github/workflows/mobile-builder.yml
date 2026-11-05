@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       project_id: {description: Project ID, required: true, type: string}
-      platform: {description: Platform, required: true, type: choice, options: [android, ios, both, windows, extension]}
+      platform: {description: Platform, required: true, type: choice, options: [android, ios, both, windows, extension, ios_unsigned]}
       request_id: {description: Unique request ID, required: true, type: string}
       source_sha: {description: Exact source commit, required: true, type: string}
 permissions:
@@ -29,6 +29,7 @@ jobs:
       ios: ${{ steps.check.outputs.ios }}
       windows: ${{ steps.check.outputs.windows }}
       extension: ${{ steps.check.outputs.extension }}
+      ios_unsigned: ${{ steps.check.outputs.ios_unsigned }}
     steps:
       - uses: actions/checkout@v4
         with: {ref: '${{ inputs.source_sha }}', persist-credentials: false}
@@ -50,8 +51,8 @@ jobs:
           retention-days: 14
   publish:
     name: Preserve verified app downloads
-    needs: [android, ios, windows, extension]
-    if: always() && (needs.android.result == 'success' || needs.ios.result == 'success' || needs.windows.result == 'success' || needs.extension.result == 'success')
+    needs: [android, ios, ios_unsigned, windows, extension]
+    if: always() && (needs.android.result == 'success' || needs.ios.result == 'success' || needs.ios_unsigned.result == 'success' || needs.windows.result == 'success' || needs.extension.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -80,10 +81,37 @@ jobs:
         with:
           name: Extension-${{ inputs.project_id }}-${{ inputs.request_id }}
           path: release-input/extension
+      - uses: actions/download-artifact@v4
+        if: needs.ios_unsigned.result == 'success'
+        with:
+          name: iOS-Unsigned-${{ inputs.project_id }}-${{ inputs.request_id }}
+          path: release-input/ios_unsigned
       - name: Publish hash-checked packages and reports
         run: python3 .builder/publish.py
         env:
           GH_TOKEN: ${{ github.token }}
+  ios_unsigned:
+    name: Unsigned iPhone device IPA - sign before install
+    needs: readiness
+    if: needs.readiness.outputs.ios_unsigned == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ inputs.source_sha }}', persist-credentials: false}
+      - name: Install Flutter stable
+        run: |
+          git clone --depth 1 --branch stable https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+      - name: Analyze, test and export unsigned device IPA
+        run: python3 .builder/ios_unsigned.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iOS-Unsigned-${{ inputs.project_id }}-${{ inputs.request_id }}
+          path: output/
+          if-no-files-found: error
+          retention-days: 14
   android:
     name: Android signed APK
     needs: readiness

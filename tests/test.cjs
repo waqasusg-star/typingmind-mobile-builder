@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),crypto=require('node:crypto'),zlib=require('node:zlib');
-const backend={};for(const p of ['.builder/build.py','.builder/windows.py','.builder/extension.py','.builder/test_extension.cjs','.builder/publish.py','.github/workflows/mobile-builder.yml'])backend[p]=fs.readFileSync(__dirname+'/../'+p,'utf8');
+const backend={};for(const p of ['.builder/build.py','.builder/ios_unsigned.py','.builder/windows.py','.builder/extension.py','.builder/test_extension.cjs','.builder/publish.py','.github/workflows/mobile-builder.yml'])backend[p]=fs.readFileSync(__dirname+'/../'+p,'utf8');
 const settings={githubOwner:'testuser',githubRepo:'builder',githubToken:'private-test-token'},sha='a'.repeat(40),tree='b'.repeat(40),next='c'.repeat(40);let calls=[],handler;
 const context=vm.createContext({TextEncoder,TextDecoder,Uint8Array,DataView,ArrayBuffer,Blob,DecompressionStream,AbortController,crypto:crypto.webcrypto,setTimeout,clearTimeout,atob,btoa,fetch:async(u,o)=>{calls.push({u,o});return handler(u,o);}});
 vm.runInContext(fs.readFileSync(__dirname+'/../typingmind-plugin/plugin.js','utf8')+'\nconst MB_BACKEND='+JSON.stringify(backend)+';',context);
@@ -62,6 +62,10 @@ function zip(entries){let offset=0;const chunks=[],central=[];for(const[name,val
  const bytes='unit-test-bytes',report={build_result:'success',signature_verified:true,files:[{name:'app.apk',sha256:crypto.createHash('sha256').update(bytes).digest('hex')}]};archive=zip([['app.apk',bytes],['Build-Report.json',JSON.stringify(report)]]);
  const download=await context.mobile_builder_get_download({run_id:10,artifact_id:20},settings);assert(download.content.some(c=>c.type==='resource'&&c.resource.uri.endsWith('app.apk')));
  report.files[0].sha256='0'.repeat(64);archive=zip([['app.apk',bytes],['Build-Report.json',JSON.stringify(report)]]);await assert.rejects(()=>context.mobile_builder_get_download({run_id:10,artifact_id:20},settings),/hash/);
+ const unsigned={platform:'ios_unsigned',code_signing:'unsigned',build_result:'success',analyze_passed:true,tests_passed:true,signature_verified:false,requires_signing:true,install_ready:false,device_build_verified:true,package_verified:true,files:[{name:'test_app-ios-unsigned.ipa',sha256:crypto.createHash('sha256').update(bytes).digest('hex')}]};
+ archive=zip([['test_app-ios-unsigned.ipa',bytes],['Build-Report.json',JSON.stringify(unsigned)]]);
+ const readyToSign=await context.mobile_builder_get_download({run_id:10,artifact_id:20},settings);assert(readyToSign.content[0].text.includes('must sign before installation'));
+ unsigned.install_ready=true;archive=zip([['test_app-ios-unsigned.ipa',bytes],['Build-Report.json',JSON.stringify(unsigned)]]);await assert.rejects(()=>context.mobile_builder_get_download({run_id:10,artifact_id:20},settings),/signature/);
  assert(calls.every(c=>c.u.startsWith('https://api.github.com/repos/testuser/builder')&&c.o.credentials==='omit'));
  console.log('PASS: settings/privacy, public-source opt-in and private repositories, safe paths, credential guards, atomic non-force writes, stale edits, immutable pipeline, uncertain submissions, bounded ZIP/CRC/deflate, signing-report gate, package hashes and attachment output.');
 })().catch(e=>{console.error(e);process.exit(1)});

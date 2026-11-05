@@ -10,7 +10,7 @@ def validate():
     if not re.fullmatch(r'[a-z][a-z0-9_]{1,39}',os.environ['PROJECT_ID']):raise ValueError('Invalid project ID')
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{5,63}',os.environ['REQUEST_ID']):raise ValueError('Invalid request ID')
     if not re.fullmatch(r'[a-f0-9]{40}',os.environ['SOURCE_SHA']):raise ValueError('Invalid source SHA')
-    if os.environ['PLATFORM'] not in {'android','ios','both','windows','extension'}:raise ValueError('Invalid platform')
+    if os.environ['PLATFORM'] not in {'android','ios','both','windows','extension','ios_unsigned'}:raise ValueError('Invalid platform')
 
 def readiness():
     validate();platform=os.environ['PLATFORM'];report={'project_id':os.environ['PROJECT_ID'],'request_id':os.environ['REQUEST_ID'],'source_sha':os.environ['SOURCE_SHA']}
@@ -19,11 +19,13 @@ def readiness():
         report[name+'_ready']=platform in {name,'both'} and not missing
         report[name+'_missing_signing']=missing
     report['windows_ready']=platform=='windows';report['extension_ready']=platform=='extension'
+    report['ios_unsigned_ready']=platform=='ios_unsigned'
+    report['ios_unsigned_note']='Device IPA export without signing credentials. Must be signed with a compatible certificate/profile before installation.'
     report['windows_signing']='Unsigned installer unless a trusted code-signing service is added. No self-signed trust changes.'
     report['note']='Presence check only. Skipped/missing platforms have produced no installable app. Actual signing is validated later.'
     Path('readiness').mkdir(exist_ok=True);Path('readiness/Build-Readiness.json').write_text(json.dumps(report,indent=2))
     with open(os.environ['GITHUB_OUTPUT'],'a')as f:
-        for name in ['android','ios','windows','extension']:f.write(name+'='+str(report[name+'_ready']).lower()+'\n')
+        for name in ['android','ios','windows','extension','ios_unsigned']:f.write(name+'='+str(report[name+'_ready']).lower()+'\n')
     with open(os.environ['GITHUB_STEP_SUMMARY'],'a')as f:f.write('```json\n'+json.dumps(report,indent=2)+'\n```\n')
 
 def prepare(source,work,run,platforms='android,ios'):

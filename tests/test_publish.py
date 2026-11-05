@@ -6,6 +6,15 @@ spec=importlib.util.spec_from_file_location('publisher',Path(__file__).resolve()
 publisher=importlib.util.module_from_spec(spec);spec.loader.exec_module(publisher)
 
 class PublishTests(unittest.TestCase):
+ def test_unsigned_ipa_cannot_be_released_as_install_ready(self):
+  env={'PROJECT_ID':'test_app','REQUEST_ID':'request01','SOURCE_SHA':'a'*40}
+  with tempfile.TemporaryDirectory()as d,patch.dict(os.environ,env):
+   folder=Path(d);name='test_app-ios-unsigned.ipa';(folder/name).write_bytes(b'fixture')
+   report={'project_id':'test_app','request_id':'request01','source_sha':'a'*40,'platform':'ios_unsigned','build_result':'success','analyze_passed':True,'tests_passed':True,'signature_verified':False,'code_signing':'unsigned','requires_signing':True,'install_ready':False,'device_build_verified':True,'package_verified':True,'files':[{'name':name,'size_bytes':7,'sha256':hashlib.sha256(b'fixture').hexdigest()}]}
+   target=folder/'Build-Report.json';target.write_text(json.dumps(report));self.assertEqual(len(publisher.verified_files(folder,'ios_unsigned')),3)
+   for key,value in [('install_ready',True),('requires_signing',False),('device_build_verified',False),('package_verified',False)]:
+    target.write_text(json.dumps({**report,key:value}))
+    with self.assertRaises(ValueError):publisher.verified_files(folder,'ios_unsigned')
  def test_unsigned_windows_requires_installer_and_launch_checks(self):
   env={'PROJECT_ID':'test_app','REQUEST_ID':'request01','SOURCE_SHA':'a'*40}
   with tempfile.TemporaryDirectory()as d,patch.dict(os.environ,env):

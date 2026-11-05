@@ -38,7 +38,7 @@ async function mb_commit(c,head,files,message){
 }
 function mobile_builder_setup_status(params,settings={}){
  let deflate=false;try{new DecompressionStream('deflate-raw');deflate=true;}catch(_){}
- return mb_json({plugin:'Universal App Builder',modes:['android','ios','windows','extension'],token_configured:!!String(settings.githubToken||'').trim(),owner_configured:!!settings.githubOwner,repository_configured:!!settings.githubRepo,browser_artifact_extraction_supported:deflate,public_source_enabled:settings.allowPublicSource==='on',connection_verified:false,
+ return mb_json({plugin:'Universal App Builder',modes:['android','ios','ios_unsigned','windows','extension'],token_configured:!!String(settings.githubToken||'').trim(),owner_configured:!!settings.githubOwner,repository_configured:!!settings.githubRepo,browser_artifact_extraction_supported:deflate,public_source_enabled:settings.allowPublicSource==='on',connection_verified:false,
   required:'A dedicated GitHub repository initialized with a README; repository-scoped Contents/Actions read-write access, plus Workflows write for pipeline installation.',
   signing:'Persistent Android release signing secrets; Apple Distribution certificate plus a matching unexpired ad hoc provisioning profile covering the target iPhone.',
   note:'Offline check only. ChatGPT GitHub access is separate from TypingMind. No native compilation or live build has been verified by this check. Never paste credentials in chat.'});
@@ -46,7 +46,7 @@ function mobile_builder_setup_status(params,settings={}){
 async function mobile_builder_connect(params,settings){
  const c=mb_context(settings),r=await mb_repository(c);let installed=true;const mismatches=[];
  for(const[path,content]of Object.entries(MB_BACKEND)){try{const f=await mb_file(c,path,c.branch);if(mb_text(f.content)!==content){installed=false;mismatches.push(path);}}catch(e){if(e.status===404){installed=false;mismatches.push(path);}else throw e;}}
- return mb_json({status:'connected',repository:r.full_name,visibility:r.private?'private':'public',pipeline_verified:installed,pipeline_mismatches:mismatches,modes:['android','ios','windows','extension'],url:c.web,signing_readiness:'Checked by workflow presence checks and actual signing validation. Secret values are never read by this plugin.'});
+ return mb_json({status:'connected',repository:r.full_name,visibility:r.private?'private':'public',pipeline_verified:installed,pipeline_mismatches:mismatches,modes:['android','ios','ios_unsigned','windows','extension'],url:c.web,signing_readiness:'Checked by workflow presence checks and actual signing validation. Secret values are never read by this plugin.'});
 }
 async function mobile_builder_install_pipeline(params,settings){
  const c=mb_context(settings);await mb_repository(c);const head=await mb_head(c),files=[];
@@ -106,7 +106,7 @@ async function universal_builder_save_extension(params,settings){
 async function mb_find_run(c,request){const r=await c.api(c.base+'/actions/workflows/mobile-builder.yml/runs?event=workflow_dispatch&per_page=50');return r.workflow_runs.find(x=>x.display_title&&x.display_title.endsWith(' / '+request));}
 async function mobile_builder_start_build(params,settings){
  const c=mb_context(settings),id=mb_id(params.project_id);await mb_repository(c);
- if(!['android','ios','both','windows','extension'].includes(params.platform)||!/^[a-zA-Z0-9][a-zA-Z0-9_-]{5,63}$/.test(params.request_id||'')||!/^[a-f0-9]{40}$/.test(params.source_sha||''))throw new Error('Provide a platform, unique 6–64 character request ID and exact saved commit SHA.');
+ if(!['android','ios','both','windows','extension','ios_unsigned'].includes(params.platform)||!/^[a-zA-Z0-9][a-zA-Z0-9_-]{5,63}$/.test(params.request_id||'')||!/^[a-f0-9]{40}$/.test(params.source_sha||''))throw new Error('Provide a platform, unique 6–64 character request ID and exact saved commit SHA.');
  const old=await mb_find_run(c,params.request_id);if(old)return mb_json({status:'already_submitted',run_id:old.id,url:old.html_url,request_id:params.request_id});
  const current=await mb_file(c,'.github/workflows/mobile-builder.yml',c.branch);if(mb_text(current.content)!==MB_BACKEND['.github/workflows/mobile-builder.yml'])throw new Error('Install the reviewed build pipeline first.');
  for(const[path,content]of Object.entries(MB_BACKEND)){const f=await mb_file(c,path,params.source_sha);if(mb_text(f.content)!==content)throw new Error('Build helper differs at the requested commit: '+path);}
@@ -124,12 +124,12 @@ async function mobile_builder_build_status(params,settings){
  const run=await c.api(c.base+'/actions/runs/'+id);if(run.path!=='.github/workflows/mobile-builder.yml')throw new Error('This is not a Mobile App Builder run.');
  const jobs=await c.api(c.base+'/actions/runs/'+id+'/jobs?per_page=100'),artifacts=await c.api(c.base+'/actions/runs/'+id+'/artifacts?per_page=100');
  const releases=[],identity=/^(?:Mobile|Universal) Builder \/ ([a-z][a-z0-9_]{1,39}) \/ ([A-Za-z0-9][A-Za-z0-9_-]{5,63})$/.exec(run.display_title||'');
- if(identity)for(const platform of ['android','ios','windows','extension']){
+ if(identity)for(const platform of ['android','ios','ios_unsigned','windows','extension']){
   try{const release=await c.api(c.base+'/releases/tags/'+encodeURIComponent('builds/'+identity[1]+'/'+identity[2]+'/'+platform));
    if(!release.draft)releases.push({platform,url:release.html_url,downloads:(release.assets||[]).filter(a=>/\.(apk|ipa|exe|zip|json|txt)$/.test(a.name)).map(a=>({name:a.name,url:a.browser_download_url,size_bytes:a.size,digest:a.digest})),automatic_expiry:false});
   }catch(e){if(e.status!==404)throw e;}
  }
- return mb_json({status:run.status,conclusion:run.conclusion,run_id:run.id,url:run.html_url,workflow_commit:run.head_sha,jobs:jobs.jobs.map(j=>({name:j.name,status:j.status,conclusion:j.conclusion,failed_steps:(j.steps||[]).filter(s=>s.conclusion==='failure').map(s=>s.name),url:j.html_url})),releases,artifacts:artifacts.artifacts.filter(a=>!a.expired).map(a=>({id:a.id,name:a.name,size_bytes:a.size_in_bytes,expires_at:a.expires_at,url:c.web+'/actions/runs/'+id+'/artifacts/'+a.id})),note:'Use published release downloads for links without automatic artifact expiry. Diagnostic artifacts expire after 14 days. A skipped/missing platform is not successful app delivery. Read Build-Readiness and the actual package report. Workflow commit is not necessarily the source_sha that was built.'});
+ return mb_json({status:run.status,conclusion:run.conclusion,run_id:run.id,url:run.html_url,workflow_commit:run.head_sha,jobs:jobs.jobs.map(j=>({name:j.name,status:j.status,conclusion:j.conclusion,failed_steps:(j.steps||[]).filter(s=>s.conclusion==='failure').map(s=>s.name),url:j.html_url})),releases,artifacts:artifacts.artifacts.filter(a=>!a.expired).map(a=>({id:a.id,name:a.name,size_bytes:a.size_in_bytes,expires_at:a.expires_at,url:c.web+'/actions/runs/'+id+'/artifacts/'+a.id})),note:'Unsigned iPhone IPAs require signing before installation. Use published release downloads for links without automatic artifact expiry. Diagnostic artifacts expire after 14 days. A skipped/missing platform is not successful app delivery. Read Build-Readiness and the actual package report. Workflow commit is not necessarily the source_sha that was built.'});
 }
 function mb_crc(bytes){let crc=0xffffffff;for(const b of bytes){crc^=b;for(let i=0;i<8;i++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}return(crc^0xffffffff)>>>0;}
 async function mb_unzip(bytes,cap){
@@ -161,12 +161,14 @@ async function mobile_builder_get_download(params,settings){
  let report=null;try{report=JSON.parse(new TextDecoder().decode(files.find(f=>f.name==='Build-Report.json').bytes));}catch(_){}
  for(const f of files.filter(f=>!params.diagnostics_only&&/\.(apk|ipa|exe|zip)$/i.test(f.name))){
   if(!report||report.build_result!=='success')throw new Error('Package lacks a successful signing report. Read build diagnostics; it is not ready.');
-  if(/\.(apk|ipa)$/i.test(f.name)&&report.signature_verified!==true)throw new Error('Mobile signature was not verified.');
+  if(/\.(apk|ipa)$/i.test(f.name)&&report.signature_verified!==true){
+   if(!(f.name.endsWith('-ios-unsigned.ipa')&&report.platform==='ios_unsigned'&&report.code_signing==='unsigned'&&report.requires_signing===true&&report.install_ready===false&&report.signature_verified===false&&report.analyze_passed===true&&report.tests_passed===true&&report.device_build_verified===true&&report.package_verified===true))throw new Error('Mobile signature was not verified.');
+  }
   if(/\.(exe|zip)$/i.test(f.name)&&!(report.analyze_passed===true&&report.tests_passed===true&&((report.platform==='windows'&&report.installer_smoke_passed===true&&report.runtime_smoke_passed===true)||(report.platform==='extension'&&report.browser_smoke_passed===true))))throw new Error('Desktop or extension package lacks successful validation.');
   const expected=report.files.find(x=>x.name===f.name),digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',f.bytes))).map(x=>x.toString(16).padStart(2,'0')).join('');
   if(!expected||digest!==expected.sha256)throw new Error('Package hash differs from its build report.');
  }
- if(!files.length)throw new Error('No supported package or diagnostic files in artifact.');const content=[{type:'text',text:'Retrieved actual build files. Package hashes/ZIP checks passed where applicable. Windows EXEs are unsigned and extension ZIPs require local loading or separate store review. Physical device testing is not implied.'}];
+ if(!files.length)throw new Error('No supported package or diagnostic files in artifact.');const content=[{type:'text',text:(report?.platform==='ios_unsigned'?'UNSIGNED iPhone IPA: must sign before installation. No device installation or signing was verified. ':'')+'Retrieved actual build files. Package hashes/ZIP checks passed where applicable. Windows EXEs are unsigned and extension ZIPs require local loading or separate store review. Physical device testing is not implied.'}];
  for(const f of files){if(params.diagnostics_only&&!/\.(json|txt|log)$/i.test(f.name))continue;const ext=f.name.split('.').pop().toLowerCase(),mime={apk:'application/vnd.android.package-archive',ipa:'application/octet-stream',exe:'application/vnd.microsoft.portable-executable',zip:'application/zip',json:'application/json',txt:'text/plain',log:'text/plain'}[ext];
   if(['json','txt','log'].includes(ext)){const text=c.clean(new TextDecoder().decode(f.bytes)).slice(0,18000);content.push({type:'text',text:f.name+'\n'+text},{type:'resource',resource:{uri:'file:///'+encodeURIComponent(f.name),mimeType:mime,text}});}
   else{let binary='';for(let i=0;i<f.bytes.length;i+=32768)binary+=String.fromCharCode(...f.bytes.subarray(i,i+32768));content.push({type:'resource',resource:{uri:'file:///'+encodeURIComponent(f.name),mimeType:mime,blob:btoa(binary)}});}}
