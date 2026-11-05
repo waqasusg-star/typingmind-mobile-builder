@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "project_type": "extension",
+  "project_id": "office_notes_test",
+  "app_name": "Office Notes Test",
+  "description": "Local-only Manifest V3 office notes popup used to verify the extension build pipeline. No host permissions, no remote calls, no client data."
+}

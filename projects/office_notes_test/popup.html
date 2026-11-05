@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Office Notes Test</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <h1>Office Notes Test</h1>
+      <label class="label" for="note">Note</label>
+      <textarea
+        id="note"
+        class="note"
+        rows="6"
+        placeholder="Write a short office note..."
+        spellcheck="true"
+      ></textarea>
+      <button id="save" class="save" type="button">Save</button>
+      <p id="status" class="status" data-state="idle" role="status" aria-live="polite">
+        Saved locally in this browser only.
+      </p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

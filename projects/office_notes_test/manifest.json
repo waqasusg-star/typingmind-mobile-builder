@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Office Notes Test",
+  "version": "1.0.0",
+  "description": "Local-only office notes popup. Stores a single note in chrome.storage.local and requests no host permissions.",
+  "action": {
+    "default_title": "Office Notes Test",
+    "default_popup": "popup.html"
+  },
+  "permissions": [
+    "storage"
+  ]
+}
