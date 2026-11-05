@@ -10,7 +10,7 @@ def validate():
     if not re.fullmatch(r'[a-z][a-z0-9_]{1,39}',os.environ['PROJECT_ID']):raise ValueError('Invalid project ID')
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{5,63}',os.environ['REQUEST_ID']):raise ValueError('Invalid request ID')
     if not re.fullmatch(r'[a-f0-9]{40}',os.environ['SOURCE_SHA']):raise ValueError('Invalid source SHA')
-    if os.environ['PLATFORM'] not in {'android','ios','both'}:raise ValueError('Invalid platform')
+    if os.environ['PLATFORM'] not in {'android','ios','both','windows','extension'}:raise ValueError('Invalid platform')
 
 def readiness():
     validate();platform=os.environ['PLATFORM'];report={'project_id':os.environ['PROJECT_ID'],'request_id':os.environ['REQUEST_ID'],'source_sha':os.environ['SOURCE_SHA']}
@@ -18,12 +18,15 @@ def readiness():
         missing=[k for k in keys if os.environ.get('HAS_'+k)!='true'] if platform in {name,'both'} else []
         report[name+'_ready']=platform in {name,'both'} and not missing
         report[name+'_missing_signing']=missing
+    report['windows_ready']=platform=='windows';report['extension_ready']=platform=='extension'
+    report['windows_signing']='Unsigned installer unless a trusted code-signing service is added. No self-signed trust changes.'
     report['note']='Presence check only. Skipped/missing platforms have produced no installable app. Actual signing is validated later.'
     Path('readiness').mkdir(exist_ok=True);Path('readiness/Build-Readiness.json').write_text(json.dumps(report,indent=2))
-    with open(os.environ['GITHUB_OUTPUT'],'a')as f:f.write('android='+str(report['android_ready']).lower()+'\nios='+str(report['ios_ready']).lower()+'\n')
+    with open(os.environ['GITHUB_OUTPUT'],'a')as f:
+        for name in ['android','ios','windows','extension']:f.write(name+'='+str(report[name+'_ready']).lower()+'\n')
     with open(os.environ['GITHUB_STEP_SUMMARY'],'a')as f:f.write('```json\n'+json.dumps(report,indent=2)+'\n```\n')
 
-def prepare(source,work,run):
+def prepare(source,work,run,platforms='android,ios'):
     if source.is_symlink() or not source.is_dir():raise ValueError('Missing/unsafe source directory')
     cfg=json.loads((source/'project.json').read_text());pid=cfg['project_id']
     if pid!=os.environ['PROJECT_ID']:raise ValueError('Project metadata mismatch')
@@ -35,7 +38,8 @@ def prepare(source,work,run):
         if p.is_file()and p.stat().st_size>1048576:raise ValueError('Source file too large')
     if not(source/'lib/main.dart').is_file():raise ValueError('Missing app implementation')
     if work.exists():raise ValueError('Build directory already exists')
-    run(['flutter','create','--project-name',pid,'--org','com.worldgate','--platforms','android,ios','--no-pub',str(work)])
+    if cfg.get('project_type','flutter')!='flutter':raise ValueError('This is not a Flutter app')
+    run(['flutter','create','--project-name',pid,'--org','com.worldgate','--platforms',platforms,'--no-pub',str(work)])
     shutil.rmtree(work/'test',ignore_errors=True)
     for p in source.iterdir():
         if p.name in {'lib','test','assets'}:
@@ -48,6 +52,7 @@ def prepare(source,work,run):
     if not re.search(r'^name:\s*[\'\"]?'+re.escape(pid)+r'[\'\"]?\s*$',(work/'pubspec.yaml').read_text(),re.M):raise ValueError('pubspec name must match project ID')
     if not(source/'analysis_options.yaml').exists():(work/'analysis_options.yaml').write_text('analyzer:\n  errors:\n    unused_import: warning\n')
     if not list((work/'test').glob('**/*_test.dart')):raise ValueError('Add a meaningful Flutter test before building')
+    if platforms=='windows':return cfg
     kts=work/'android/app/build.gradle.kts';groovy=work/'android/app/build.gradle';gradle=kts if kts.exists()else groovy
     text=gradle.read_text()
     if kts.exists():

@@ -1,10 +1,10 @@
-name: Mobile App Builder
-run-name: Mobile Builder / ${{ inputs.project_id }} / ${{ inputs.request_id }}
+name: Universal App Builder
+run-name: Universal Builder / ${{ inputs.project_id }} / ${{ inputs.request_id }}
 on:
   workflow_dispatch:
     inputs:
       project_id: {description: Project ID, required: true, type: string}
-      platform: {description: Platform, required: true, type: choice, options: [android, ios, both]}
+      platform: {description: Platform, required: true, type: choice, options: [android, ios, both, windows, extension]}
       request_id: {description: Unique request ID, required: true, type: string}
       source_sha: {description: Exact source commit, required: true, type: string}
 permissions:
@@ -25,6 +25,8 @@ jobs:
     outputs:
       android: ${{ steps.check.outputs.android }}
       ios: ${{ steps.check.outputs.ios }}
+      windows: ${{ steps.check.outputs.windows }}
+      extension: ${{ steps.check.outputs.extension }}
     steps:
       - uses: actions/checkout@v4
         with: {ref: '${{ inputs.source_sha }}', persist-credentials: false}
@@ -46,8 +48,8 @@ jobs:
           retention-days: 14
   publish:
     name: Preserve verified app downloads
-    needs: [android, ios]
-    if: always() && (needs.android.result == 'success' || needs.ios.result == 'success')
+    needs: [android, ios, windows, extension]
+    if: always() && (needs.android.result == 'success' || needs.ios.result == 'success' || needs.windows.result == 'success' || needs.extension.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -66,6 +68,16 @@ jobs:
         with:
           name: iOS-${{ inputs.project_id }}-${{ inputs.request_id }}
           path: release-input/ios
+      - uses: actions/download-artifact@v4
+        if: needs.windows.result == 'success'
+        with:
+          name: Windows-${{ inputs.project_id }}-${{ inputs.request_id }}
+          path: release-input/windows
+      - uses: actions/download-artifact@v4
+        if: needs.extension.result == 'success'
+        with:
+          name: Extension-${{ inputs.project_id }}-${{ inputs.request_id }}
+          path: release-input/extension
       - name: Publish hash-checked packages and reports
         run: python3 .builder/publish.py
         env:
@@ -123,6 +135,55 @@ jobs:
         if: always()
         with:
           name: iOS-${{ inputs.project_id }}-${{ inputs.request_id }}
+          path: output/
+          if-no-files-found: error
+          retention-days: 14
+  windows:
+    name: Windows installer and portable app
+    needs: readiness
+    if: needs.readiness.outputs.windows == 'true'
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ inputs.source_sha }}', persist-credentials: false}
+      - name: Install Flutter stable
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch stable https://github.com/flutter/flutter.git "$env:RUNNER_TEMP/flutter"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "$env:RUNNER_TEMP/flutter/bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Analyze, test, build, install and launch
+        run: python .builder/windows.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Windows-${{ inputs.project_id }}-${{ inputs.request_id }}
+          path: output/
+          if-no-files-found: error
+          retention-days: 14
+  extension:
+    name: Chrome extension package and Chromium tests
+    needs: readiness
+    if: needs.readiness.outputs.extension == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ inputs.source_sha }}', persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Install pinned Chromium test tools
+        run: |
+          npm install --prefix "$RUNNER_TEMP/extension-tools" playwright@1.56.1 --no-audit --no-fund
+          "$RUNNER_TEMP/extension-tools/node_modules/.bin/playwright" install --with-deps chromium
+          echo "NODE_PATH=$RUNNER_TEMP/extension-tools/node_modules" >> "$GITHUB_ENV"
+      - name: Validate, test and package extension
+        run: python3 .builder/extension.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Extension-${{ inputs.project_id }}-${{ inputs.request_id }}
           path: output/
           if-no-files-found: error
           retention-days: 14

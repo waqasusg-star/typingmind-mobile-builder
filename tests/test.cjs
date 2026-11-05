@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),crypto=require('node:crypto'),zlib=require('node:zlib');
-const backend={};for(const p of ['.builder/build.py','.builder/publish.py','.github/workflows/mobile-builder.yml'])backend[p]=fs.readFileSync(__dirname+'/../'+p,'utf8');
+const backend={};for(const p of ['.builder/build.py','.builder/windows.py','.builder/extension.py','.builder/test_extension.cjs','.builder/publish.py','.github/workflows/mobile-builder.yml'])backend[p]=fs.readFileSync(__dirname+'/../'+p,'utf8');
 const settings={githubOwner:'testuser',githubRepo:'builder',githubToken:'private-test-token'},sha='a'.repeat(40),tree='b'.repeat(40),next='c'.repeat(40);let calls=[],handler;
 const context=vm.createContext({TextEncoder,TextDecoder,Uint8Array,DataView,ArrayBuffer,Blob,DecompressionStream,AbortController,crypto:crypto.webcrypto,setTimeout,clearTimeout,atob,btoa,fetch:async(u,o)=>{calls.push({u,o});return handler(u,o);}});
 vm.runInContext(fs.readFileSync(__dirname+'/../typingmind-plugin/plugin.js','utf8')+'\nconst MB_BACKEND='+JSON.stringify(backend)+';',context);
@@ -30,6 +30,13 @@ function zip(entries){let offset=0;const chunks=[],central=[];for(const[name,val
  const created=JSON.parse(calls.find(c=>c.o.method==='POST'&&c.u.endsWith('/git/trees')).o.body);assert.equal(created.base_tree,tree);assert(created.tree.every(f=>f.path.startsWith('projects/test_app/')));assert.equal(JSON.parse(calls.find(c=>c.o.method==='PATCH').o.body).force,false);assert(!JSON.stringify(saved).includes(settings.githubToken));
  calls=[];await assert.rejects(()=>context.mobile_builder_save_project({...project,expected_commit:'d'.repeat(40)},settings),/changed/);assert(!calls.some(c=>c.o.method==='POST'));
  await assert.rejects(()=>context.mobile_builder_save_project({...project,files:[{path:'lib/main.dart',content:'github_pat_credential'}]},settings),/credential/);
+ handler=base;calls=[];
+ for(const path of ['../escape.js','private.key','.github/workflows/a.yml','project.json'])assert.throws(()=>context.ub_extension_path(path));
+ const extension={project_id:'test_ext',app_name:'Test Extension',files:[{path:'manifest.json',content:JSON.stringify({manifest_version:3,name:'Test',version:'1.0'})},{path:'popup.html',content:'<button>Test</button>'},{path:'tests/extension.test.cjs',content:'module.exports=async()=>{};'}]};
+ const extSaved=JSON.parse(await context.universal_builder_save_extension(extension,settings));assert.equal(extSaved.project_type,'extension');
+ const extTree=JSON.parse(calls.find(c=>c.o.method==='POST'&&c.u.endsWith('/git/trees')).o.body);assert(extTree.tree.every(f=>f.path.startsWith('projects/test_ext/')));
+ await assert.rejects(()=>context.universal_builder_save_extension({...extension,files:[{path:'manifest.json',content:'{"manifest_version":2}'}]},settings),/Manifest V3/);
+ await assert.rejects(()=>context.universal_builder_save_extension({...extension,expected_commit:'d'.repeat(40)},settings),/changed/);
  handler=(u,o)=>u.includes('/contents/')?response({content:btoa('different backend')}):base(u,o);calls=[];await assert.rejects(()=>context.mobile_builder_install_pipeline({},settings),/differs/);assert(!calls.some(c=>c.o.method==='POST'));
  handler=(u,o)=>{const p=new URL(u).pathname;if(p.endsWith('/mobile-builder.yml/runs'))return response({workflow_runs:[]});if(p.includes('/contents/'))return response({content:Buffer.from(backend[decodeURIComponent(p.split('/contents/')[1])]||'{}','utf8').toString('base64')});if(p.endsWith('/dispatches'))throw new DOMException('Timeout','AbortError');return base(u,o);};
  const uncertain=JSON.parse(await context.mobile_builder_start_build({project_id:'test_app',platform:'both',request_id:'request_test01',source_sha:sha},settings));assert.equal(uncertain.status,'submission_unknown');

@@ -6,6 +6,16 @@ spec=importlib.util.spec_from_file_location('publisher',Path(__file__).resolve()
 publisher=importlib.util.module_from_spec(spec);spec.loader.exec_module(publisher)
 
 class PublishTests(unittest.TestCase):
+ def test_unsigned_windows_requires_installer_and_launch_checks(self):
+  env={'PROJECT_ID':'test_app','REQUEST_ID':'request01','SOURCE_SHA':'a'*40}
+  with tempfile.TemporaryDirectory()as d,patch.dict(os.environ,env):
+   folder=Path(d);files=[]
+   for name in ['test_app-windows-setup.exe','test_app-windows-portable.zip']:
+    p=folder/name;p.write_bytes(b'fixture');files.append({'name':name,'size_bytes':7,'sha256':hashlib.sha256(b'fixture').hexdigest()})
+   report={'project_id':'test_app','request_id':'request01','source_sha':'a'*40,'platform':'windows','build_result':'success','analyze_passed':True,'tests_passed':True,'signature_verified':False,'code_signing':'unsigned','installer_smoke_passed':True,'runtime_smoke_passed':True,'files':files}
+   target=folder/'Build-Report.json';target.write_text(json.dumps(report));self.assertEqual(len(publisher.verified_files(folder,'windows')),4)
+   report['runtime_smoke_passed']=False;target.write_text(json.dumps(report))
+   with self.assertRaises(ValueError):publisher.verified_files(folder,'windows')
  def test_only_matching_successful_signed_package_is_released(self):
   env={'PROJECT_ID':'test_app','REQUEST_ID':'request01','SOURCE_SHA':'a'*40}
   with tempfile.TemporaryDirectory()as d,patch.dict(os.environ,env):

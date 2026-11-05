@@ -38,15 +38,15 @@ async function mb_commit(c,head,files,message){
 }
 function mobile_builder_setup_status(params,settings={}){
  let deflate=false;try{new DecompressionStream('deflate-raw');deflate=true;}catch(_){}
- return mb_json({plugin:'Mobile App Builder',token_configured:!!String(settings.githubToken||'').trim(),owner_configured:!!settings.githubOwner,repository_configured:!!settings.githubRepo,browser_artifact_extraction_supported:deflate,public_source_enabled:settings.allowPublicSource==='on',connection_verified:false,
+ return mb_json({plugin:'Universal App Builder',modes:['android','ios','windows','extension'],token_configured:!!String(settings.githubToken||'').trim(),owner_configured:!!settings.githubOwner,repository_configured:!!settings.githubRepo,browser_artifact_extraction_supported:deflate,public_source_enabled:settings.allowPublicSource==='on',connection_verified:false,
   required:'A dedicated GitHub repository initialized with a README; repository-scoped Contents/Actions read-write access, plus Workflows write for pipeline installation.',
   signing:'Persistent Android release signing secrets; Apple Distribution certificate plus a matching unexpired ad hoc provisioning profile covering the target iPhone.',
   note:'Offline check only. ChatGPT GitHub access is separate from TypingMind. No native compilation or live build has been verified by this check. Never paste credentials in chat.'});
 }
 async function mobile_builder_connect(params,settings){
- const c=mb_context(settings),r=await mb_repository(c);let installed=false;
- try{const f=await mb_file(c,'.github/workflows/mobile-builder.yml',c.branch);installed=mb_text(f.content)===MB_BACKEND['.github/workflows/mobile-builder.yml'];}catch(e){if(e.status!==404)throw e;}
- return mb_json({status:'connected',repository:r.full_name,visibility:r.private?'private':'public',pipeline_verified:installed,url:c.web,signing_readiness:'Checked by workflow presence checks and actual signing validation. Secret values are never read by this plugin.'});
+ const c=mb_context(settings),r=await mb_repository(c);let installed=true;const mismatches=[];
+ for(const[path,content]of Object.entries(MB_BACKEND)){try{const f=await mb_file(c,path,c.branch);if(mb_text(f.content)!==content){installed=false;mismatches.push(path);}}catch(e){if(e.status===404){installed=false;mismatches.push(path);}else throw e;}}
+ return mb_json({status:'connected',repository:r.full_name,visibility:r.private?'private':'public',pipeline_verified:installed,pipeline_mismatches:mismatches,modes:['android','ios','windows','extension'],url:c.web,signing_readiness:'Checked by workflow presence checks and actual signing validation. Secret values are never read by this plugin.'});
 }
 async function mobile_builder_install_pipeline(params,settings){
  const c=mb_context(settings);await mb_repository(c);const head=await mb_head(c),files=[];
@@ -70,9 +70,9 @@ async function mobile_builder_save_project(params,settings){
   return{path:'projects/'+id+'/'+path,content:f.content};});
  if(total>2097152)throw new Error('Source save exceeds 2 MiB.');
  await mb_repository(c);const head=await mb_head(c);if(params.expected_commit&&params.expected_commit!==head.sha)throw new Error('Repository changed. Read the latest source before editing.');
- let exists=false;try{await mb_file(c,'projects/'+id+'/project.json',head.sha);exists=true;}catch(e){if(e.status!==404)throw e;}
+ let exists=false;try{const old=JSON.parse(mb_text((await mb_file(c,'projects/'+id+'/project.json',head.sha)).content));if(old.project_type&&old.project_type!=='flutter')throw new Error('This ID belongs to an extension. Use its extension tools.');exists=true;}catch(e){if(e.status!==404)throw e;}
  if(!exists&&!seen.has('lib/main.dart'))throw new Error('A new app requires its actual lib/main.dart implementation.');
- files.push({path:'projects/'+id+'/project.json',content:mb_json({schema:1,project_id:id,app_name:params.app_name.trim(),bundle_id:params.bundle_id,description:String(params.description||'').slice(0,2000)})+'\n'});
+ files.push({path:'projects/'+id+'/project.json',content:mb_json({schema:1,project_type:'flutter',project_id:id,app_name:params.app_name.trim(),bundle_id:params.bundle_id,description:String(params.description||'').slice(0,2000)})+'\n'});
  const sha=await mb_commit(c,head,files,'Update app '+id);return mb_json({status:'saved',project_id:id,commit:sha,file_count:files.length,url:c.web+'/tree/'+sha+'/projects/'+id,build_started:false});
 }
 async function mobile_builder_read_project(params,settings){
@@ -80,17 +80,38 @@ async function mobile_builder_read_project(params,settings){
  if(tree.truncated)throw new Error('Repository is too large. Use a dedicated builder repository.');
  const prefix='projects/'+id+'/',listing=tree.tree.filter(f=>f.type==='blob'&&f.path.startsWith(prefix)).map(f=>({path:f.path.slice(prefix.length),size:f.size}));
  const paths=params.paths||[];if(paths.length>8)throw new Error('Read up to eight source files at once.');const files=[];
- for(const path of paths){if(path!=='project.json')mb_path(path);const f=await mb_file(c,prefix+path,head.sha);if(f.size>262144)throw new Error('Source file too large.');const text=mb_text(f.content);files.push({path,content:text.slice(0,30000),truncated:text.length>30000});}
+ for(const path of paths){if(path!=='project.json'){try{mb_path(path);}catch(_){ub_extension_path(path);}}const f=await mb_file(c,prefix+path,head.sha);if(f.size>262144)throw new Error('Source file too large.');const text=mb_text(f.content);files.push({path,content:text.slice(0,30000),truncated:text.length>30000});}
  return mb_json({project_id:id,commit:head.sha,files:listing,selected_source:files});
+}
+function ub_extension_path(path){
+ if(typeof path!=='string'||! /^[A-Za-z0-9_./-]{1,180}$/.test(path)||path.startsWith('.')||path==='project.json'||path.split('/').some(p=>!p||p==='.'||p==='..')||! /\.(json|js|mjs|cjs|html|css|svg|md)$/i.test(path))throw new Error('Use safe extension JSON/JS/HTML/CSS/SVG/Markdown paths; metadata, credentials and build scripts are not allowed.');
+ return path;
+}
+async function universal_builder_save_extension(params,settings){
+ const c=mb_context(settings),id=mb_id(params.project_id);
+ if(typeof params.app_name!=='string'||!params.app_name.trim()||params.app_name.length>80||/[\x00-\x1f]/.test(params.app_name))throw new Error('Provide an extension name of 1–80 characters.');
+ if(!Array.isArray(params.files)||!params.files.length||params.files.length>40)throw new Error('Save 1–40 complete source files.');
+ const seen=new Set();let total=0;
+ const files=params.files.map(f=>{const path=ub_extension_path(f.path);if(seen.has(path))throw new Error('Duplicate path.');seen.add(path);
+  if(typeof f.content!=='string')throw new Error('Source must be UTF-8 text.');const size=new TextEncoder().encode(f.content).length;total+=size;if(size>262144||total>2097152)throw new Error('Extension save too large.');
+  if(/github_pat_|ghp_|sk-[a-fA-F0-9]{24,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(f.content))throw new Error('Potential credential detected.');
+  if(path==='manifest.json'){const m=JSON.parse(f.content);if(m.manifest_version!==3)throw new Error('Use Manifest V3.');}
+  return{path:'projects/'+id+'/'+path,content:f.content};});
+ await mb_repository(c);const head=await mb_head(c);if(params.expected_commit&&params.expected_commit!==head.sha)throw new Error('Repository changed. Read the latest source before editing.');
+ let exists=false;try{const old=JSON.parse(mb_text((await mb_file(c,'projects/'+id+'/project.json',head.sha)).content));if(old.project_type!=='extension')throw new Error('This ID belongs to a Flutter app.');exists=true;}catch(e){if(e.status!==404)throw e;}
+ if(!exists&&(!seen.has('manifest.json')||!seen.has('tests/extension.test.cjs')))throw new Error('A new extension needs manifest.json and meaningful tests/extension.test.cjs.');
+ files.push({path:'projects/'+id+'/project.json',content:mb_json({schema:1,project_type:'extension',project_id:id,app_name:params.app_name.trim(),description:String(params.description||'').slice(0,2000)})+'\n'});
+ const sha=await mb_commit(c,head,files,'Update extension '+id);return mb_json({status:'saved',project_id:id,project_type:'extension',commit:sha,file_count:files.length,url:c.web+'/tree/'+sha+'/projects/'+id,build_started:false});
 }
 async function mb_find_run(c,request){const r=await c.api(c.base+'/actions/workflows/mobile-builder.yml/runs?event=workflow_dispatch&per_page=50');return r.workflow_runs.find(x=>x.display_title&&x.display_title.endsWith(' / '+request));}
 async function mobile_builder_start_build(params,settings){
  const c=mb_context(settings),id=mb_id(params.project_id);await mb_repository(c);
- if(!['android','ios','both'].includes(params.platform)||!/^[a-zA-Z0-9][a-zA-Z0-9_-]{5,63}$/.test(params.request_id||'')||!/^[a-f0-9]{40}$/.test(params.source_sha||''))throw new Error('Provide a platform, unique 6–64 character request ID and exact saved commit SHA.');
+ if(!['android','ios','both','windows','extension'].includes(params.platform)||!/^[a-zA-Z0-9][a-zA-Z0-9_-]{5,63}$/.test(params.request_id||'')||!/^[a-f0-9]{40}$/.test(params.source_sha||''))throw new Error('Provide a platform, unique 6–64 character request ID and exact saved commit SHA.');
  const old=await mb_find_run(c,params.request_id);if(old)return mb_json({status:'already_submitted',run_id:old.id,url:old.html_url,request_id:params.request_id});
  const current=await mb_file(c,'.github/workflows/mobile-builder.yml',c.branch);if(mb_text(current.content)!==MB_BACKEND['.github/workflows/mobile-builder.yml'])throw new Error('Install the reviewed build pipeline first.');
  for(const[path,content]of Object.entries(MB_BACKEND)){const f=await mb_file(c,path,params.source_sha);if(mb_text(f.content)!==content)throw new Error('Build helper differs at the requested commit: '+path);}
- await mb_file(c,'projects/'+id+'/project.json',params.source_sha);
+ const project=JSON.parse(mb_text((await mb_file(c,'projects/'+id+'/project.json',params.source_sha)).content));
+ if((params.platform==='extension')!==(project.project_type==='extension'))throw new Error('Choose extension for extension projects, or android/ios/both/windows for Flutter projects.');
  try{const d=await c.api(c.base+'/actions/workflows/mobile-builder.yml/dispatches','POST',{ref:c.branch,inputs:{project_id:id,platform:params.platform,request_id:params.request_id,source_sha:params.source_sha}});
   const r=d?.workflow_run_id?{id:d.workflow_run_id,html_url:d.html_url}:await mb_find_run(c,params.request_id);
   return mb_json({status:'submitted',request_id:params.request_id,run_id:r?.id||null,url:r?.html_url||c.web+'/actions',source_sha:params.source_sha,next_action:'Check this request’s status. Jobs consume GitHub Actions allowance/billing and do not publish to stores.'});
@@ -102,10 +123,10 @@ async function mobile_builder_build_status(params,settings){
  if(!Number.isSafeInteger(Number(id))||Number(id)<1)throw new Error('Invalid run ID.');
  const run=await c.api(c.base+'/actions/runs/'+id);if(run.path!=='.github/workflows/mobile-builder.yml')throw new Error('This is not a Mobile App Builder run.');
  const jobs=await c.api(c.base+'/actions/runs/'+id+'/jobs?per_page=100'),artifacts=await c.api(c.base+'/actions/runs/'+id+'/artifacts?per_page=100');
- const releases=[],identity=/^Mobile Builder \/ ([a-z][a-z0-9_]{1,39}) \/ ([A-Za-z0-9][A-Za-z0-9_-]{5,63})$/.exec(run.display_title||'');
- if(identity)for(const platform of ['android','ios']){
+ const releases=[],identity=/^(?:Mobile|Universal) Builder \/ ([a-z][a-z0-9_]{1,39}) \/ ([A-Za-z0-9][A-Za-z0-9_-]{5,63})$/.exec(run.display_title||'');
+ if(identity)for(const platform of ['android','ios','windows','extension']){
   try{const release=await c.api(c.base+'/releases/tags/'+encodeURIComponent('builds/'+identity[1]+'/'+identity[2]+'/'+platform));
-   if(!release.draft)releases.push({platform,url:release.html_url,downloads:(release.assets||[]).filter(a=>/\.(apk|ipa|json|txt)$/.test(a.name)).map(a=>({name:a.name,url:a.browser_download_url,size_bytes:a.size,digest:a.digest})),automatic_expiry:false});
+   if(!release.draft)releases.push({platform,url:release.html_url,downloads:(release.assets||[]).filter(a=>/\.(apk|ipa|exe|zip|json|txt)$/.test(a.name)).map(a=>({name:a.name,url:a.browser_download_url,size_bytes:a.size,digest:a.digest})),automatic_expiry:false});
   }catch(e){if(e.status!==404)throw e;}
  }
  return mb_json({status:run.status,conclusion:run.conclusion,run_id:run.id,url:run.html_url,workflow_commit:run.head_sha,jobs:jobs.jobs.map(j=>({name:j.name,status:j.status,conclusion:j.conclusion,failed_steps:(j.steps||[]).filter(s=>s.conclusion==='failure').map(s=>s.name),url:j.html_url})),releases,artifacts:artifacts.artifacts.filter(a=>!a.expired).map(a=>({id:a.id,name:a.name,size_bytes:a.size_in_bytes,expires_at:a.expires_at,url:c.web+'/actions/runs/'+id+'/artifacts/'+a.id})),note:'Use published release downloads for links without automatic artifact expiry. Diagnostic artifacts expire after 14 days. A skipped/missing platform is not successful app delivery. Read Build-Readiness and the actual package report. Workflow commit is not necessarily the source_sha that was built.'});
@@ -122,7 +143,7 @@ async function mb_unzip(bytes,cap){
   if(cursor+46+nl+el+cl>bytes.length)throw new Error('Invalid ZIP bounds.');const name=new TextDecoder().decode(bytes.slice(cursor+46,cursor+46+nl));cursor+=46+nl+el+cl;
   if(name.endsWith('/'))continue;
   if(name.startsWith('/')||name.includes('\\')||name.includes('\0')||name.split('/').some(x=>x==='..'||x==='.')||flags&1||![0,8].includes(method)||size===0xffffffff||packed===0xffffffff)throw new Error('Unsafe ZIP entry.');
-  if(!/\.(apk|ipa|json|txt|log)$/i.test(name))continue;total+=size;if(total>cap)throw new Error('Expanded artifact exceeds download limit.');
+  if(!/\.(apk|ipa|exe|zip|json|txt|log)$/i.test(name))continue;total+=size;if(total>cap)throw new Error('Expanded artifact exceeds download limit.');
   if(local+30>bytes.length||v.getUint32(local,true)!==0x04034b50)throw new Error('Invalid ZIP header.');const localNameLength=v.getUint16(local+26,true);if(new TextDecoder().decode(bytes.slice(local+30,local+30+localNameLength))!==name||v.getUint16(local+8,true)!==method)throw new Error('ZIP local header mismatch.');const start=local+30+localNameLength+v.getUint16(local+28,true);if(start+packed>bytes.length)throw new Error('Invalid ZIP file bounds.');
   let data=bytes.slice(start,start+packed);
   if(method===8){const reader=new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader(),chunks=[];let length=0;
@@ -138,13 +159,15 @@ async function mobile_builder_get_download(params,settings){
  if(!artifact)throw new Error('Artifact missing, expired or belongs to another build.');if(artifact.size_in_bytes>c.cap)throw new Error('Artifact exceeds download limit. Use '+url);
  let files;try{files=await mb_unzip(await c.api(c.base+'/actions/artifacts/'+params.artifact_id+'/zip','GET',undefined,true),c.cap);}catch(e){throw new Error(c.clean(e.message)+' Official artifact: '+url);}
  let report=null;try{report=JSON.parse(new TextDecoder().decode(files.find(f=>f.name==='Build-Report.json').bytes));}catch(_){}
- for(const f of files.filter(f=>/\.(apk|ipa)$/i.test(f.name))){
-  if(!report||report.build_result!=='success'||report.signature_verified!==true)throw new Error('Package lacks a successful signing report. Read build diagnostics; it is not ready.');
+ for(const f of files.filter(f=>/\.(apk|ipa|exe|zip)$/i.test(f.name))){
+  if(!report||report.build_result!=='success')throw new Error('Package lacks a successful signing report. Read build diagnostics; it is not ready.');
+  if(/\.(apk|ipa)$/i.test(f.name)&&report.signature_verified!==true)throw new Error('Mobile signature was not verified.');
+  if(/\.(exe|zip)$/i.test(f.name)&&!(report.analyze_passed===true&&report.tests_passed===true&&((report.platform==='windows'&&report.installer_smoke_passed===true&&report.runtime_smoke_passed===true)||(report.platform==='extension'&&report.browser_smoke_passed===true))))throw new Error('Desktop or extension package lacks successful validation.');
   const expected=report.files.find(x=>x.name===f.name),digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',f.bytes))).map(x=>x.toString(16).padStart(2,'0')).join('');
   if(!expected||digest!==expected.sha256)throw new Error('Package hash differs from its build report.');
  }
- if(!files.length)throw new Error('No supported package or diagnostic files in artifact.');const content=[{type:'text',text:'Retrieved actual build files. Package hashes/ZIP checks passed where applicable. Phone testing is not implied.'}];
- for(const f of files){const ext=f.name.split('.').pop().toLowerCase(),mime={apk:'application/vnd.android.package-archive',ipa:'application/octet-stream',json:'application/json',txt:'text/plain',log:'text/plain'}[ext];
+ if(!files.length)throw new Error('No supported package or diagnostic files in artifact.');const content=[{type:'text',text:'Retrieved actual build files. Package hashes/ZIP checks passed where applicable. Windows EXEs are unsigned and extension ZIPs require local loading or separate store review. Physical device testing is not implied.'}];
+ for(const f of files){if(params.diagnostics_only&&!/\.(json|txt|log)$/i.test(f.name))continue;const ext=f.name.split('.').pop().toLowerCase(),mime={apk:'application/vnd.android.package-archive',ipa:'application/octet-stream',exe:'application/vnd.microsoft.portable-executable',zip:'application/zip',json:'application/json',txt:'text/plain',log:'text/plain'}[ext];
   if(['json','txt','log'].includes(ext)){const text=c.clean(new TextDecoder().decode(f.bytes)).slice(0,18000);content.push({type:'text',text:f.name+'\n'+text},{type:'resource',resource:{uri:'file:///'+encodeURIComponent(f.name),mimeType:mime,text}});}
   else{let binary='';for(let i=0;i<f.bytes.length;i+=32768)binary+=String.fromCharCode(...f.bytes.subarray(i,i+32768));content.push({type:'resource',resource:{uri:'file:///'+encodeURIComponent(f.name),mimeType:mime,blob:btoa(binary)}});}}
  return{content};
