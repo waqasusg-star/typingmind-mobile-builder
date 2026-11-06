@@ -8,7 +8,7 @@
   "version": "1.0.4",
   "build_number": "5",
   "minimum_ios": "15.0",
-  "description": "Widget now ticks live without the App Group: the extension co-bundles the shared widget code and keeps its own local snapshot, so balance, peak state and the countdown stay current when entitlement-based sharing is unavailable.",
+  "description": "Extension keeps its own newer snapshot copy and seeds from the built-in schedule so the widget stays live without App Groups.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
