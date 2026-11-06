@@ -1,3 +1,11 @@
+# iOS 1.1.4 / build 6
+
+- Pausing or deleting a download during stream preparation now cancels its resolver and invalidates the preparation attempt. Late success/failure callbacks cannot start orphan downloads or alter a resumed attempt.
+- Preparation callbacks and restored background-task state are processed on the main queue. The next eligible queued item is reconsidered after cancellation.
+- Invalid stream addresses and unavailable HLS download tasks now produce a failed state instead of leaving downloads stuck.
+- Adds 12 cancellation regression checks, alongside the existing 12 request/path checks. These are component tests, not phone or UI tests.
+- Preserves all 1.1.3 performance, offline-path and compatibility changes below. No measured speed or battery improvement is claimed.
+
 # HDrama maintenance review — Android 1.9.1 (20), iOS 1.1.3 (5)
 
 ## Baselines and preserved identity

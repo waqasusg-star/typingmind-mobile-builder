@@ -5,10 +5,10 @@
   "app_name": "HDrama",
   "bundle_id": "com.waqas.hdrama",
   "scheme": "HDrama",
-  "version": "1.1.3",
-  "build_number": "5",
+  "version": "1.1.4",
+  "build_number": "6",
   "minimum_ios": "15.0",
-  "description": "HDrama 1.1.2: targeted ad filtering, protected verification frames, explicit per-site compatibility mode; runtime verification pending.",
+  "description": "HDrama maintenance: guarded download preparation cancellation, offline-path and network lifecycle fixes.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

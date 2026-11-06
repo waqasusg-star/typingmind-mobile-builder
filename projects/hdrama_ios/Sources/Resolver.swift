@@ -29,9 +29,15 @@ final class StreamResolver: NSObject, WKNavigationDelegate {
     private var polling = false
     private var pageUrl = ""
 
-    static func resolve(_ pageUrl: String, completion: @escaping (Result<Stream, Error>) -> Void) {
+    @discardableResult
+    static func resolve(_ pageUrl: String, completion: @escaping (Result<Stream, Error>) -> Void) -> StreamResolver {
         let resolver = StreamResolver()
         resolver.start(pageUrl, completion)
+        return resolver
+    }
+
+    func cancel() {
+        finish(.failure(URLError(.cancelled)))
     }
 
     private func start(_ pageUrl: String, _ completion: @escaping (Result<Stream, Error>) -> Void) {

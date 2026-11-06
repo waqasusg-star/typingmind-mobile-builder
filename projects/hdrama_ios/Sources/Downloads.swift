@@ -50,7 +50,8 @@ final class DownloadStore: NSObject {
     static let changed = Notification.Name("hdrama.downloads.changed")
 
     private(set) var items: [DownloadItem] = []
-    private var resolving = false
+    private var resolutionGate = DownloadResolutionGate()
+    private var pendingResolver: StreamResolver?
     private let defaults = UserDefaults.standard
     private var networkObserver: NSObjectProtocol?
     private var backgroundHandlers: [String: () -> Void] = [:]
@@ -164,31 +165,53 @@ final class DownloadStore: NSObject {
     }
 
     private func resolveNext() {
-        guard !resolving, NetworkMonitor.shared.isOnline else { return }
+        guard resolutionGate.active == nil, NetworkMonitor.shared.isOnline else { return }
         guard !(wifiOnly && !NetworkMonitor.shared.isWiFi) else { return }
         guard let item = items.first(where: { $0.state == "queued" }) else { return }
-        resolving = true
-        StreamResolver.resolve(item.id) { [weak self] result in
-            guard let self = self else { return }
-            self.resolving = false
-            switch result {
-            case .success(let stream):
-                self.update(item.id) { entry in
-                    entry.streamUrl = stream.url
-                    entry.mime = stream.mimeType ?? ""
-                    entry.referer = stream.referer
-                    entry.state = "downloading"
-                    entry.error = ""
+        let attempt = resolutionGate.begin(item.id)
+        pendingResolver = StreamResolver.resolve(item.id) { [weak self] result in
+            // Even an immediate resolver failure is processed after its handle has been stored.
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, self.resolutionGate.active == attempt else { return }
+                self.pendingResolver = nil
+                defer {
+                    self.resolutionGate.finish(attempt)
+                    self.resolveNext()
                 }
-                self.start(itemID: item.id, stream: stream)
-            case .failure(let error):
-                self.update(item.id) { entry in
-                    entry.state = "failed"
-                    entry.error = error.localizedDescription
+                let current = self.items.first(where: { $0.id == attempt.id })
+                guard self.resolutionGate.accepts(attempt, itemID: current?.id, state: current?.state) else { return }
+                guard NetworkMonitor.shared.isOnline, !(self.wifiOnly && !NetworkMonitor.shared.isWiFi) else { return }
+                switch result {
+                case .success(let stream):
+                    self.update(item.id) { entry in
+                        entry.streamUrl = stream.url
+                        entry.mime = stream.mimeType ?? ""
+                        entry.referer = stream.referer
+                        entry.state = "downloading"
+                        entry.error = ""
+                    }
+                    do { try self.start(itemID: item.id, stream: stream) }
+                    catch {
+                        self.update(item.id) { entry in
+                            entry.state = "failed"
+                            entry.error = error.localizedDescription
+                        }
+                    }
+                case .failure(let error):
+                    self.update(item.id) { entry in
+                        entry.state = "failed"
+                        entry.error = error.localizedDescription
+                    }
                 }
             }
-            self.resolveNext()
         }
+    }
+
+    private func cancelResolution(_ id: String) {
+        guard resolutionGate.invalidate(id) else { return }
+        let resolver = pendingResolver
+        pendingResolver = nil
+        resolver?.cancel()
     }
 
     private func bitrate(for quality: Int) -> Int {
@@ -200,8 +223,8 @@ final class DownloadStore: NSObject {
         }
     }
 
-    private func start(itemID: String, stream: Stream) {
-        guard let url = URL(string: stream.url) else { return }
+    private func start(itemID: String, stream: Stream) throws {
+        guard let url = URL(string: stream.url), StreamPolicy.candidate(stream.url, contentType: stream.mimeType ?? "") else { throw URLError(.badURL) }
         let isHLS = stream.url.lowercased().contains(".m3u8") || (stream.mimeType ?? "").contains("mpegurl")
         if isHLS {
             var options: [String: Any] = [:]
@@ -214,10 +237,10 @@ final class DownloadStore: NSObject {
                     "User-Agent": stream.userAgent
                 ]
             ])
-            let task = hlsSession.makeAssetDownloadTask(asset: asset, assetTitle: itemID,
-                                                        assetArtworkData: nil, options: options)
-            task?.taskDescription = itemID
-            task?.resume()
+            guard let task = hlsSession.makeAssetDownloadTask(asset: asset, assetTitle: itemID,
+                                                        assetArtworkData: nil, options: options) else { throw URLError(.cannotCreateFile) }
+            task.taskDescription = itemID
+            task.resume()
         } else {
             var request = URLRequest(url: url)
             request.setValue(stream.referer, forHTTPHeaderField: "Referer")
@@ -230,13 +253,16 @@ final class DownloadStore: NSObject {
     }
 
     func pause(_ id: String) {
-        cancelTask(id)
+        if items.first(where: { $0.id == id })?.state == "downloading" { cancelTask(id) }
         update(id) { entry in
             if entry.state == "downloading" || entry.state == "queued" { entry.state = "paused" }
         }
+        cancelResolution(id)
+        resolveNext()
     }
 
     func resume(_ id: String) {
+        cancelResolution(id)
         update(id) { entry in
             entry.state = "queued"
             entry.error = ""
@@ -253,6 +279,7 @@ final class DownloadStore: NSObject {
     }
 
     func retry(_ id: String) {
+        cancelResolution(id)
         update(id) { entry in
             entry.state = "queued"
             entry.error = ""
@@ -263,13 +290,15 @@ final class DownloadStore: NSObject {
 
     func delete(_ ids: [String]) {
         for id in ids {
-            cancelTask(id)
+            cancelResolution(id)
+            if items.first(where: { $0.id == id })?.state == "downloading" { cancelTask(id) }
             if let item = items.first(where: { $0.id == id }), !item.localPath.isEmpty {
                 if let url = DownloadPaths.resolve(item.localPath, home: URL(fileURLWithPath: NSHomeDirectory())) { try? FileManager.default.removeItem(at: url) }
             }
         }
         items.removeAll { ids.contains($0.id) }
         notify()
+        resolveNext()
     }
 
     private func cancelTask(_ id: String) {
@@ -282,20 +311,17 @@ final class DownloadStore: NSObject {
     }
 
     private func reconnect() {
-        fileSession.getAllTasks { [weak self] tasks in
-            guard let self = self else { return }
-            for task in tasks {
-                guard let id = task.taskDescription, self.items.contains(where: { $0.id == id }) else { continue }
-                self.update(id) { entry in entry.state = "downloading" }
+        func restore(_ tasks: [URLSessionTask]) {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                for task in tasks {
+                    guard let id = task.taskDescription, self.items.contains(where: { $0.id == id }) else { continue }
+                    self.update(id) { entry in entry.state = "downloading" }
+                }
             }
         }
-        hlsSession.getAllTasks { [weak self] tasks in
-            guard let self = self else { return }
-            for task in tasks {
-                guard let id = task.taskDescription, self.items.contains(where: { $0.id == id }) else { continue }
-                self.update(id) { entry in entry.state = "downloading" }
-            }
-        }
+        fileSession.getAllTasks(completionHandler: restore)
+        hlsSession.getAllTasks(completionHandler: restore)
     }
 
     private func offlinePath(_ id: String, ext: String) -> URL {

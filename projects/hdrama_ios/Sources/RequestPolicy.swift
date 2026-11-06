@@ -43,3 +43,37 @@ enum DownloadPaths {
         return url.path.hasPrefix(prefix) ? url : nil
     }
 }
+
+
+/// One live preparation attempt; late callbacks cannot revive a paused or deleted download.
+struct DownloadResolutionGate {
+    struct Attempt: Equatable {
+        let id: String
+        let generation: UInt64
+    }
+    private(set) var active: Attempt?
+    private var generation: UInt64 = 0
+
+    mutating func begin(_ id: String) -> Attempt {
+        generation &+= 1
+        let attempt = Attempt(id: id, generation: generation)
+        active = attempt
+        return attempt
+    }
+
+    func accepts(_ attempt: Attempt, itemID: String?, state: String?) -> Bool {
+        active == attempt && itemID == attempt.id && state == "queued"
+    }
+
+    @discardableResult mutating func invalidate(_ id: String) -> Bool {
+        guard active?.id == id else { return false }
+        active = nil
+        return true
+    }
+
+    @discardableResult mutating func finish(_ attempt: Attempt) -> Bool {
+        guard active == attempt else { return false }
+        active = nil
+        return true
+    }
+}

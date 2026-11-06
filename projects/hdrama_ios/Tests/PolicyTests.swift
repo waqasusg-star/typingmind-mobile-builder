@@ -19,6 +19,22 @@ func expect(_ value: @autoclosure () -> Bool, _ message: String) { if !value() {
   expect(DownloadPaths.resolve("/var/mobile/Containers/Data/Application/OLD/Library/Offline/a.mp4",home:home)?.path == home.path + "/Library/Offline/a.mp4","Legacy paths migrate across updates")
   expect(DownloadPaths.resolve("relative:Library/../../../../escape",home:home) == nil,"Reject path traversal")
   expect(DownloadPaths.resolve("/etc/passwd",home:home) == nil,"Reject unrelated absolute files")
-  print("PASS: 12 request/path policy checks; not a full app/UI/device test suite")
+
+  var gate = DownloadResolutionGate()
+  let first = gate.begin("episode")
+  expect(gate.accepts(first, itemID: "episode", state: "queued"), "Current queued preparation accepted")
+  expect(!gate.accepts(first, itemID: "episode", state: "paused"), "Pause blocks preparation callback")
+  expect(!gate.accepts(first, itemID: nil, state: nil), "Deleted item blocks preparation callback")
+  expect(!gate.invalidate("other"), "Unrelated pause leaves current preparation intact")
+  expect(gate.invalidate("episode"), "Pause invalidates current preparation")
+  expect(!gate.accepts(first, itemID: "episode", state: "queued"), "Invalidated success or failure cannot mutate state")
+  let resumed = gate.begin("episode")
+  expect(first != resumed, "Pause and resume allocate a fresh generation")
+  expect(!gate.accepts(first, itemID: "episode", state: "queued"), "Old callback cannot revive a resumed item")
+  expect(!gate.finish(first) && gate.active == resumed, "Stale completion cannot clear a newer attempt")
+  expect(gate.accepts(resumed, itemID: "episode", state: "queued"), "New resumed callback is accepted")
+  expect(gate.finish(resumed) && gate.active == nil, "Current completion releases the queue")
+  expect(!gate.accepts(resumed, itemID: "episode", state: "queued"), "Duplicate completion cannot start another task")
+  print("PASS: 24 request/path and cancellation checks; not a full app/UI/device test suite")
  }
 }
