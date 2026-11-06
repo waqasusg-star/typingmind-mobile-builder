@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "README updated for the real widget: native countdown, container background, account generation and bounded timeline behaviour, without unverified device claims.",
+  "description": "Reattach widgetURL on the final root of WidgetEntryView and use the native timer countdown in inline and rectangular accessories.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

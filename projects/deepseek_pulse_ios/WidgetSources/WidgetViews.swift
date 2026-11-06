@@ -42,13 +42,18 @@ struct WidgetEntryView: View {
     @Environment(\.widgetFamily) private var family
 
     var body: some View {
-        if #available(iOSApplicationExtension 16.0, *) {
-            content
-                .containerBackgroundPulse(for: state)
-        } else {
-            content
-                .pulseBackground(state: state)
+        // The deep link must be attached to the final root content, on every iOS branch, so tapping
+        // the widget actually opens the app with the scheme the Info.plist registers.
+        Group {
+            if #available(iOSApplicationExtension 16.0, *) {
+                content
+                    .containerBackgroundPulse(for: state)
+            } else {
+                content
+                    .pulseBackground(state: state)
+            }
         }
+        .widgetURL(WidgetPolicy.deepLinkURL())
     }
 
     @ViewBuilder
@@ -179,7 +184,12 @@ struct PulseInlineView: View {
     var entry: PulseEntry
 
     var body: some View {
-        Text(entry.headline + " " + entry.countdownText)
+        // Inline is a single line of text; iOS renders it in its own monochrome style.
+        if let target = entry.nextSwitchAt, target > entry.date {
+            Text(entry.headline) + Text(" ") + Text(target, style: .timer)
+        } else {
+            Text(entry.headline + " " + entry.countdownText)
+        }
     }
 }
 
