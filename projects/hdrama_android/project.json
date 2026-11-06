@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "project_type": "native_android",
+  "project_id": "hdrama_android",
+  "app_name": "HDrama",
+  "bundle_id": "com.waqas.hdramabrowser",
+  "namespace": "com.waqas.hdrama",
+  "version": "1.9.1",
+  "build_number": "20",
+  "minimum_android": 26,
+  "target_android": 35,
+  "original_certificate_sha256": "499e74c1e9318c7bc00a0720314a7c7d7b8d12811d53871018b34882eb7095ca"
+}

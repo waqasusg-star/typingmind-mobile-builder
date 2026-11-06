@@ -1,0 +1,5 @@
+<resources>
+    <color name="brand_accent">#A491FF</color>
+    <!-- Kept in sync with AppColors.background so launch, browser and list screens share one surface. -->
+    <color name="app_background">#101016</color>
+</resources>

@@ -102,10 +102,7 @@ final class Artwork {
     private func absoluteURL(_ raw: String, base: String) -> String? {
         guard let resolved = URL(string: raw, relativeTo: URL(string: base))?.absoluteURL,
               resolved.scheme?.lowercased() == "https" else { return nil }
-        var components = URLComponents(url: resolved, resolvingAgainstBaseURL: false)
-        components?.query = nil
-        components?.fragment = nil
-        return components?.url?.absoluteString ?? resolved.absoluteString
+        return RequestPolicy.posterURL(raw, base: base)?.absoluteString
     }
 
     func fetch(_ series: Series, completion: (() -> Void)? = nil) {

@@ -38,7 +38,7 @@ async function mb_commit(c,head,files,message){
 }
 function mobile_builder_setup_status(params,settings={}){
  let deflate=false;try{new DecompressionStream('deflate-raw');deflate=true;}catch(_){}
- return mb_json({plugin:'Universal App Builder',version:7,workflow_profile:settings.workflowProfile||'Complete delivery',available_modules:['source_review','web_compatibility','ui_features','verification','build_release'],modes:['android','ios','ios_unsigned','native_ios_unsigned','windows','extension'],token_configured:!!String(settings.githubToken||'').trim(),owner_configured:!!settings.githubOwner,repository_configured:!!settings.githubRepo,browser_artifact_extraction_supported:deflate,public_source_enabled:settings.allowPublicSource==='on',connection_verified:false,
+ return mb_json({plugin:'Universal App Builder',version:8,workflow_profile:settings.workflowProfile||'Complete delivery',available_modules:['source_review','web_compatibility','ui_features','verification','build_release'],modes:['android','ios','ios_unsigned','native_ios_unsigned','native_android','windows','extension'],token_configured:!!String(settings.githubToken||'').trim(),owner_configured:!!settings.githubOwner,repository_configured:!!settings.githubRepo,browser_artifact_extraction_supported:deflate,public_source_enabled:settings.allowPublicSource==='on',connection_verified:false,
   required:'A dedicated GitHub repository initialized with a README; repository-scoped Contents/Actions read-write access, plus Workflows write for pipeline installation.',
   signing:'Persistent Android release signing secrets; Apple Distribution certificate plus a matching unexpired ad hoc provisioning profile covering the target iPhone.',
   note:'Offline check only. ChatGPT GitHub access is separate from TypingMind. No native compilation or live build has been verified by this check. Never paste credentials in chat.'});
@@ -81,7 +81,7 @@ async function mobile_builder_read_project(params={},settings){
  const blobs=tree.tree.filter(f=>f.type==='blob');
  const grouped=new Map();
  for(const f of blobs){const m=/^projects\/([a-z][a-z0-9_]{1,39})\/(.+)$/.exec(f.path);if(m){if(!grouped.has(m[1]))grouped.set(m[1],[]);grouped.get(m[1]).push(m[2]);}}
- const projects=Array.from(grouped,([project_id,files])=>({project_id,file_count:files.length,metadata_present:files.includes('project.json'),flutter_source_present:files.includes('lib/main.dart'),extension_source_present:files.includes('manifest.json'),native_ios_source_present:files.some(p=>p.startsWith('Sources/')&&p.endsWith('.swift')),test_files_present:files.some(p=>p.startsWith('test/')||p.startsWith('tests/'))})).sort((a,b)=>a.project_id.localeCompare(b.project_id));
+ const projects=Array.from(grouped,([project_id,files])=>({project_id,file_count:files.length,metadata_present:files.includes('project.json'),flutter_source_present:files.includes('lib/main.dart'),extension_source_present:files.includes('manifest.json'),native_android_source_present:files.includes('app/src/main/AndroidManifest.xml'),native_ios_source_present:files.some(p=>p.startsWith('Sources/')&&p.endsWith('.swift')),test_files_present:files.some(p=>p.startsWith('test/')||p.startsWith('tests/'))})).sort((a,b)=>a.project_id.localeCompare(b.project_id));
  const sourceHints=blobs.filter(f=>!f.path.startsWith('.builder/')&&!f.path.startsWith('.github/')&&!f.path.startsWith('projects/')&&/(^|\/)(pubspec\.yaml|settings\.gradle(?:\.kts)?|build\.gradle(?:\.kts)?|package\.json|Package\.swift|manifest\.json)$|\.xcodeproj\/project\.pbxproj$|\.(?:apk|ipa|zip)$/i.test(f.path)).slice(0,80).map(f=>({path:f.path,size:f.size}));
  const discovery={commit:head.sha,repository:c.owner+'/'+c.repo,projects:projects.slice(0,100),projects_truncated:projects.length>100,source_candidates_outside_projects:sourceHints,scope:'Configured repository and branch only; this does not search other repositories, chats or user devices.'};
  const paths=params.paths||[];
@@ -90,7 +90,7 @@ async function mobile_builder_read_project(params={},settings){
  const id=mb_id(params.project_id),prefix='projects/'+id+'/',listing=blobs.filter(f=>f.path.startsWith(prefix)).map(f=>({path:f.path.slice(prefix.length),size:f.size}));
  if(!listing.length)return mb_json({...discovery,project_id:id,status:'project_not_found',files:[],selected_source:[],next_action:'This ID has no files on the configured branch. Check returned IDs and supplied uploads before asking for source. Never overwrite or rebuild an unrelated project.'});
  const files=[];
- for(const path of paths){if(!listing.some(f=>f.path===path))throw new Error('Path not in this project listing: '+String(path).slice(0,200));if(path!=='project.json'){try{mb_path(path);}catch(_){try{ub_extension_path(path);}catch(_){ub_native_path(path);}}}const f=await mb_file(c,prefix+path,head.sha);if(f.size>262144)throw new Error('Source file too large.');const text=mb_text(f.content);files.push({path,content:text.slice(0,30000),truncated:text.length>30000});}
+ for(const path of paths){if(!listing.some(f=>f.path===path))throw new Error('Path not in this project listing: '+String(path).slice(0,200));if(path!=='project.json'){try{mb_path(path);}catch(_){try{ub_extension_path(path);}catch(_){try{ub_native_path(path);}catch(_){na_path(path);}}}}const f=await mb_file(c,prefix+path,head.sha);if(f.size>262144)throw new Error('Source file too large.');const text=mb_text(f.content);files.push({path,content:text.slice(0,30000),truncated:text.length>30000});}
  return mb_json({...discovery,status:'project_found',project_id:id,files:listing,selected_source:files});
 }
 function ub_extension_path(path){
@@ -131,10 +131,10 @@ async function mobile_builder_build_status(params,settings){
  const c=mb_context(settings);let id=params.run_id;
  if(!id){if(!/^[a-zA-Z0-9][a-zA-Z0-9_-]{5,63}$/.test(params.request_id||''))throw new Error('Provide a run ID or original request ID.');const found=await mb_find_run(c,params.request_id);if(!found)return mb_json({status:'not_visible_yet',request_id:params.request_id,next_action:'Wait briefly and check the same request; do not start a duplicate build.'});id=found.id;}
  if(!Number.isSafeInteger(Number(id))||Number(id)<1)throw new Error('Invalid run ID.');
- const run=await c.api(c.base+'/actions/runs/'+id);if(!['.github/workflows/mobile-builder.yml','.github/workflows/native-ios-builder.yml'].includes(run.path))throw new Error('This is not a reviewed builder run.');
+ const run=await c.api(c.base+'/actions/runs/'+id);if(!['.github/workflows/mobile-builder.yml','.github/workflows/native-ios-builder.yml','.github/workflows/native-android-builder.yml'].includes(run.path))throw new Error('This is not a reviewed builder run.');
  const jobs=await c.api(c.base+'/actions/runs/'+id+'/jobs?per_page=100'),artifacts=await c.api(c.base+'/actions/runs/'+id+'/artifacts?per_page=100');
- const releases=[],identity=/^(?:Mobile Builder|Universal Builder|Native iOS Builder) \/ ([a-z][a-z0-9_]{1,39}) \/ ([A-Za-z0-9][A-Za-z0-9_-]{5,63})$/.exec(run.display_title||'');
- if(identity)for(const platform of (run.path==='.github/workflows/native-ios-builder.yml'?['native_ios_unsigned']:['android','ios','ios_unsigned','windows','extension'])){
+ const releases=[],identity=/^(?:Mobile Builder|Universal Builder|Native iOS Builder|Native Android Builder) \/ ([a-z][a-z0-9_]{1,39}) \/ ([A-Za-z0-9][A-Za-z0-9_-]{5,63})$/.exec(run.display_title||'');
+ if(identity)for(const platform of (run.path==='.github/workflows/native-ios-builder.yml'?['native_ios_unsigned']:run.path==='.github/workflows/native-android-builder.yml'?['native_android']:['android','ios','ios_unsigned','windows','extension'])){
   try{const release=await c.api(c.base+'/releases/tags/'+encodeURIComponent('builds/'+identity[1]+'/'+identity[2]+'/'+platform));
    if(!release.draft)releases.push({platform,url:release.html_url,downloads:(release.assets||[]).filter(a=>/\.(apk|ipa|exe|zip|json|txt)$/.test(a.name)).map(a=>({name:a.name,url:a.browser_download_url,size_bytes:a.size,digest:a.digest})),automatic_expiry:false});
   }catch(e){if(e.status!==404)throw e;}
@@ -164,7 +164,7 @@ async function mb_unzip(bytes,cap){
 }
 async function mobile_builder_get_download(params,settings){
  const c=mb_context(settings);if(!Number.isSafeInteger(params.run_id)||!Number.isSafeInteger(params.artifact_id)||params.run_id<1||params.artifact_id<1)throw new Error('Use run/artifact IDs from Build Status.');
- const run=await c.api(c.base+'/actions/runs/'+params.run_id);if(!['.github/workflows/mobile-builder.yml','.github/workflows/native-ios-builder.yml'].includes(run.path))throw new Error('Not a reviewed builder run.');
+ const run=await c.api(c.base+'/actions/runs/'+params.run_id);if(!['.github/workflows/mobile-builder.yml','.github/workflows/native-ios-builder.yml','.github/workflows/native-android-builder.yml'].includes(run.path))throw new Error('Not a reviewed builder run.');
  const list=await c.api(c.base+'/actions/runs/'+params.run_id+'/artifacts?per_page=100'),artifact=list.artifacts.find(a=>a.id===params.artifact_id&&!a.expired),url=c.web+'/actions/runs/'+params.run_id+'/artifacts/'+params.artifact_id;
  if(!artifact)throw new Error('Artifact missing, expired or belongs to another build.');if(artifact.size_in_bytes>c.cap)throw new Error('Artifact exceeds download limit. Use '+url);
  let files;try{files=await mb_unzip(await c.api(c.base+'/actions/artifacts/'+params.artifact_id+'/zip','GET',undefined,true),c.cap);}catch(e){throw new Error(c.clean(e.message)+' Official artifact: '+url);}
@@ -174,7 +174,7 @@ async function mobile_builder_get_download(params,settings){
   if(/\.(apk|ipa)$/i.test(f.name)&&report.signature_verified!==true){
    if(!(f.name.endsWith('-ios-unsigned.ipa')&&['ios_unsigned','native_ios_unsigned'].includes(report.platform)&&report.code_signing==='unsigned'&&report.requires_signing===true&&report.install_ready===false&&report.signature_verified===false&&report.analyze_passed===true&&((report.platform==='ios_unsigned'&&report.tests_passed===true)||(report.platform==='native_ios_unsigned'&&report.project_type==='native_ios'&&report.compile_passed===true))&&report.device_build_verified===true&&report.package_verified===true))throw new Error('Mobile signature was not verified.');
   }
-  const nativeSource=f.name.endsWith('-source.zip')&&report.platform==='native_ios_unsigned'&&report.source_package_verified===true&&report.compile_passed===true&&report.analyze_passed===true&&report.package_verified===true;
+  const nativeSource=f.name.endsWith('-source.zip')&&['native_ios_unsigned','native_android'].includes(report.platform)&&report.source_package_verified===true&&report.compile_passed===true&&report.analyze_passed===true&&report.package_verified===true;
   if(/\.(exe|zip)$/i.test(f.name)&&!nativeSource&&!(report.analyze_passed===true&&report.tests_passed===true&&((report.platform==='windows'&&report.installer_smoke_passed===true&&report.runtime_smoke_passed===true)||(report.platform==='extension'&&report.browser_smoke_passed===true))))throw new Error('Desktop or extension package lacks successful validation.');
   const expected=report.files.find(x=>x.name===f.name),digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',f.bytes))).map(x=>x.toString(16).padStart(2,'0')).join('');
   if(!expected||digest!==expected.sha256)throw new Error('Package hash differs from its build report.');
@@ -187,7 +187,7 @@ async function mobile_builder_get_download(params,settings){
 }
 
 function ub_native_path(path){
- if(typeof path!=='string'||! /^[A-Za-z0-9_./-]{1,180}$/.test(path)||path.startsWith('.')||path.split('/').some(p=>!p||p==='.'||p==='..')||! /^(?:Sources\/.*\.swift|Resources\/.*\.(?:json|plist|strings|stringsdict|storyboard|xib|xml|txt|md|svg)|project\.ya?ml|README\.md|BUILD_NOTES\.md)$/.test(path))throw new Error('Use native Sources/*.swift, supported text Resources/, project.yml or README.md paths. No scripts, signing files or credentials.');
+ if(typeof path!=='string'||! /^[A-Za-z0-9_./-]{1,180}$/.test(path)||path.startsWith('.')||path.split('/').some(p=>!p||p==='.'||p==='..')||! /^(?:(?:Sources|Tests)\/.*\.swift|Resources\/.*\.(?:json|plist|strings|stringsdict|storyboard|xib|xml|txt|md|svg)|project\.ya?ml|README\.md|BUILD_NOTES\.md|CHANGELOG\.md)$/.test(path))throw new Error('Use native Sources/*.swift, supported text Resources/, project.yml or README.md paths. No scripts, signing files or credentials.');
  return path;
 }
 async function native_ios_install_pipeline(params={},settings){
@@ -212,9 +212,9 @@ async function native_ios_save_project(params,settings){
   if(/github_pat_|ghp_|sk-[a-fA-F0-9]{24,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(f.content))throw new Error('Potential credential detected in native source.');
   return{path:'projects/'+id+'/'+path,content:f.content};});
  await mb_repository(c);const head=await mb_head(c);if(params.expected_commit&&params.expected_commit!==head.sha)throw new Error('Repository changed. Read latest native source before editing.');
- let exists=false;try{const old=JSON.parse(mb_text((await mb_file(c,'projects/'+id+'/project.json',head.sha)).content));if(old.project_type!=='native_ios')throw new Error('This ID belongs to a different project type. Preserve it; select a separate native ID.');if(old.bundle_id!==params.bundle_id)throw new Error('Preserve the existing native bundle ID.');exists=true;}catch(e){if(e.status!==404)throw e;}
+ let nativeOld={};let exists=false;try{const old=JSON.parse(mb_text((await mb_file(c,'projects/'+id+'/project.json',head.sha)).content));if(old.project_type!=='native_ios')throw new Error('This ID belongs to a different project type. Preserve it; select a separate native ID.');if(old.bundle_id!==params.bundle_id)throw new Error('Preserve the existing native bundle ID.');nativeOld=old;exists=true;}catch(e){if(e.status!==404)throw e;}
  if(!exists&&!files.some(f=>f.path.endsWith('.swift')))throw new Error('A new native iPhone app needs actual Swift source.');
- files.push({path:'projects/'+id+'/project.json',content:mb_json({schema:1,project_type:'native_ios',project_id:id,app_name:params.app_name.trim(),bundle_id:params.bundle_id,scheme:params.scheme,version:params.version,build_number:String(params.build_number),minimum_ios:params.minimum_ios,description:String(params.description||'').slice(0,2000)})+'\n'});
+ files.push({path:'projects/'+id+'/project.json',content:mb_json({...nativeOld,schema:1,project_type:'native_ios',project_id:id,app_name:params.app_name.trim(),bundle_id:params.bundle_id,scheme:params.scheme,version:params.version,build_number:String(params.build_number),minimum_ios:params.minimum_ios,description:String(params.description||'').slice(0,2000)})+'\n'});
  const sha=await mb_commit(c,head,files,'Update native iPhone app '+id);
  return mb_json({status:'saved',project_id:id,project_type:'native_ios',commit:sha,file_count:files.length,build_started:false,url:c.web+'/tree/'+sha+'/projects/'+id});
 }
@@ -242,3 +242,36 @@ function universal_builder_plan_work(params={},settings={}) {
  if(!Array.isArray(modules)||!modules.length||modules.some(m=>!available.includes(m))||new Set(modules).size!==modules.length)throw new Error('Select unique supported work modules.');
  return mb_json({profile,modules,available_modules:available,completion_requirements:['inspect_actual_source','preserve_identity_and_existing_features','use_exact_saved_sha','read_real_reports','versioned_package_and_source_links','state_signing_and_runtime_limits'],note:'Modules organize this task; they do not add unsupported tools or guarantee model correctness. Use the chat model selector to change the model. A real phone pass requires real-device evidence.'});
 }
+
+function na_path(path){
+ if(typeof path!=='string'||path.length>200||path.includes('\\')||path.split('/').some(p=>!p||p==='.'||p==='..')||! /^(?:app\/src\/(?:main|test)\/.+\.(?:kt|java|xml|json|txt|svg)|(?:app\/)?build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties|README\.md|CHANGELOG\.md|VALIDATION\.md)$/.test(path))throw new Error('Use safe native Kotlin/Java/XML source, tests, reviewed text build metadata or Markdown; no credentials/scripts.');return path;
+}
+async function native_android_install_pipeline(params={},settings){
+ const c=mb_context(settings);await mb_repository(c);const head=await mb_head(c),files=[];
+ if(params.expected_commit&&params.expected_commit!==head.sha)throw new Error('Repository changed. Read current state.');
+ for(const[path,content]of Object.entries(MB_ANDROID_BACKEND)){try{if(mb_text((await mb_file(c,path,head.sha)).content)!==content)throw new Error('Reviewed native Android pipeline differs: '+path);}catch(e){if(e.status===404)files.push({path,content});else throw e;}}
+ const sha=files.length?await mb_commit(c,head,files,'Install reviewed native Android pipeline'):head.sha;
+ return mb_json({status:files.length?'installed':'already_installed',commit:sha,build_started:false,url:c.web+'/actions/workflows/native-android-builder.yml'});
+}
+async function native_android_save_project(params,settings){
+ const c=mb_context(settings),id=mb_id(params.project_id);await mb_repository(c);const head=await mb_head(c);
+ if(params.expected_commit&&params.expected_commit!==head.sha)throw new Error('Repository changed. Read latest source.');
+ for(const k of ['bundle_id','namespace'])if(!/^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*){2,}$/.test(params[k]||''))throw new Error('Use original native identity.');
+ if(!/^\d+\.\d+\.\d+$/.test(params.version||'')||!/^\d{1,9}$/.test(String(params.build_number||''))||typeof params.app_name!=='string'||!params.app_name.trim()||params.app_name.length>80)throw new Error('Provide valid name/version/build.');
+ let old={};try{old=JSON.parse(mb_text((await mb_file(c,'projects/'+id+'/project.json',head.sha)).content));if(old.project_type!=='native_android'||old.bundle_id!==params.bundle_id||old.namespace!==params.namespace)throw new Error('Preserve existing native Android project identity.');}catch(e){if(e.status!==404)throw e;}
+ if(!Array.isArray(params.files)||!params.files.length||params.files.length>100)throw new Error('Save 1–100 complete source files.');const seen=new Set();let total=0;
+ const files=params.files.map(f=>{const path=na_path(f.path);if(seen.has(path))throw new Error('Duplicate source');seen.add(path);if(typeof f.content!=='string'||new TextEncoder().encode(f.content).length>262144)throw new Error('Invalid or oversized text');total+=f.content.length;if(/github_pat_|ghp_|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(f.content))throw new Error('Potential credential');return {path:'projects/'+id+'/'+path,content:f.content};});
+ if(total>2097152)throw new Error('Source exceeds 2 MiB');
+ files.push({path:'projects/'+id+'/project.json',content:mb_json({...old,schema:1,project_type:'native_android',project_id:id,app_name:params.app_name,bundle_id:params.bundle_id,namespace:params.namespace,version:params.version,build_number:String(params.build_number),minimum_android:26,target_android:35})+'\n'});
+ const sha=await mb_commit(c,head,files,'Update native Android app '+id);return mb_json({status:'saved',commit:sha,project_id:id,build_started:false,url:c.web+'/tree/'+sha+'/projects/'+id});
+}
+async function na_find_run(c,request){const r=await c.api(c.base+'/actions/workflows/native-android-builder.yml/runs?event=workflow_dispatch&per_page=50');return r.workflow_runs.find(x=>x.display_title?.endsWith(' / '+request));}
+async function native_android_start_build(params,settings){
+ const c=mb_context(settings),id=mb_id(params.project_id);await mb_repository(c);
+ if(!/^[a-f0-9]{40}$/.test(params.source_sha||'')||! /^[A-Za-z0-9][A-Za-z0-9_-]{5,63}$/.test(params.request_id||''))throw new Error('Use exact saved SHA and unique request ID.');
+ const old=await na_find_run(c,params.request_id);if(old)return mb_json({status:'already_submitted',run_id:old.id,url:old.html_url,request_id:params.request_id});
+ for(const[path,content]of Object.entries(MB_ANDROID_BACKEND))for(const ref of [c.branch,params.source_sha])if(mb_text((await mb_file(c,path,ref)).content)!==content)throw new Error('Native Android pipeline differs: '+path);
+ const project=JSON.parse(mb_text((await mb_file(c,'projects/'+id+'/project.json',params.source_sha)).content));if(project.project_type!=='native_android')throw new Error('Select actual native Kotlin project.');
+ try{await c.api(c.base+'/actions/workflows/native-android-builder.yml/dispatches','POST',{ref:c.branch,inputs:{project_id:id,request_id:params.request_id,source_sha:params.source_sha}});const run=await na_find_run(c,params.request_id);return mb_json({status:'submitted',run_id:run?.id||null,url:run?.html_url||c.web+'/actions/workflows/native-android-builder.yml',request_id:params.request_id,source_sha:params.source_sha,note:'APK requires configured signing secrets; compare the report certificate to the supplied APK before claiming a compatible update. No physical phone test is implied.'});}catch(e){return mb_json({status:'submission_unknown',request_id:params.request_id,error:c.clean(e.message),next_action:'Check same request; do not dispatch again blindly.'});}
+}
+async function native_android_build_status(params,settings){const c=mb_context(settings);let id=params.run_id;if(!id){const run=await na_find_run(c,params.request_id);if(!run)return mb_json({status:'not_visible_yet',request_id:params.request_id});id=run.id;}return mobile_builder_build_status({run_id:Number(id)},settings);}

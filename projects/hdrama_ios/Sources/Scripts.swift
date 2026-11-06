@@ -55,7 +55,7 @@ enum Scripts {
     static let observer = """
     (() => {
       if (window.__hdramaResolver) return;
-      const state = window.__hdramaResolver = {sources:[], lastClick:0};
+      const state = window.__hdramaResolver = {sources:[], lastClick:0, attempts:0};
       const record = (raw, type) => {
         try {
           const u = new URL(raw, location.href);
@@ -107,10 +107,10 @@ enum Scripts {
           try { if (/\\.(m3u8|mpd|mp4|webm)$/i.test(new URL(r.name).pathname)) sources.push({url:r.name, mimeType:''}); } catch (_) {}
         }
       }
-      if (!sources.length && state && document.readyState !== 'loading' && Date.now() - state.lastClick >= 1800) {
+      if (!sources.length && state && (state.attempts || 0) < 3 && document.readyState !== 'loading' && Date.now() - state.lastClick >= 1800) {
         const b = document.querySelector('button[aria-label="Play"]');
         const playing = Array.from(document.querySelectorAll('video')).some(v => !v.paused);
-        if (b && !playing) { state.lastClick = Date.now(); b.click(); }
+        if (b && !playing) { state.lastClick = Date.now(); state.attempts = (state.attempts || 0) + 1; b.click(); }
       }
       return JSON.stringify({sources});
     })()

@@ -26,7 +26,7 @@ def prepare(source,work):
         if p.is_symlink():raise ValueError('Symlink source refused')
         if not p.is_file():continue
         rel=p.relative_to(source)
-        if rel.parts[0] not in {'Sources','Resources'}:continue
+        if rel.parts[0] not in {'Sources','Resources','Tests'}:continue
         if p.stat().st_size>1048576:raise ValueError('Native source file too large')
         if p.suffix.lower()not in {'.swift','.json','.plist','.strings','.stringsdict','.storyboard','.xib','.xml','.txt','.md','.svg','.png','.jpg','.jpeg'}:raise ValueError('Unsupported native source file')
         target=work/rel;target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(p,target)
@@ -69,7 +69,7 @@ def package_source(source,out,cfg,source_sha):
             if p.is_symlink():raise ValueError('Unsafe source archive symlink')
             if not p.is_file():continue
             rel=p.relative_to(source)
-            if rel.parts[0] not in {'Sources','Resources'} and str(rel) not in {'project.yml','project.json','README.md','BUILD_NOTES.md'}:continue
+            if rel.parts[0] not in {'Sources','Resources','Tests'} and str(rel) not in {'project.yml','project.json','README.md','BUILD_NOTES.md','CHANGELOG.md'}:continue
             if p.suffix.lower() in {'.p12','.pem','.key','.mobileprovision'}:raise ValueError('Signing files forbidden in source archive')
             z.write(p,cfg['scheme']+'-iOS/'+rel.as_posix())
         z.writestr(cfg['scheme']+'-iOS/SOURCE-COMMIT.txt',source_sha+'\n')
@@ -91,6 +91,12 @@ def build():
         if cfg['project_id']!=report['project_id']:raise ValueError('Project ID mismatch')
         report.update(app_name=cfg['app_name'],bundle_id=cfg['bundle_id'],version=cfg['version'],build_number=str(cfg['build_number']))
         report['xcode_version']=run(['xcodebuild','-version']).strip();report['xcodegen_version']=run(['xcodegen','--version']).strip()
+        tests=cfg.get('policy_test_sources',[])
+        if tests:
+            if tests!=['Sources/RequestPolicy.swift','Tests/PolicyTests.swift']:raise ValueError('Unsupported standalone policy test inputs')
+            test_binary=temp/(report['request_id']+'-policy-tests')
+            run(['xcrun','swiftc',*[work/p for p in tests],'-o',test_binary],work)
+            run([test_binary],work);report.update(tests_passed=True,tests_status='standalone_request_policy_tests_passed',app_ui_tests_passed=False)
         run(['xcodegen','generate','--spec','native-project.json'],work)
         common=['xcodebuild','-project',cfg['scheme']+'.xcodeproj','-scheme',cfg['scheme'],'-configuration','Release','-sdk','iphoneos','-destination','generic/platform=iOS','CODE_SIGNING_ALLOWED=NO','CODE_SIGNING_REQUIRED=NO','CODE_SIGN_IDENTITY=','COMPILER_INDEX_STORE_ENABLE=NO']
         archive=temp/(report['request_id']+'.xcarchive')
@@ -104,6 +110,7 @@ def build():
         package=out/(artifact_stem(cfg)+'-ios-unsigned.ipa');run(['ditto','-c','-k','--keepParent',payload,package])
         verify_ipa(package,app.name,info['CFBundleExecutable']);report['package_verified']=True
         source_zip=package_source(source,out,cfg,report['source_sha']);report['source_package_verified']=True
+        if (source/'CHANGELOG.md').is_file():shutil.copy2(source/'CHANGELOG.md',out/'CHANGELOG.md')
         report['files']=[{'name':f.name,'size_bytes':f.stat().st_size,'sha256':hashlib.sha256(f.read_bytes()).hexdigest()} for f in [package,source_zip]]
         (out/'SIGN-BEFORE-INSTALL.txt').write_text('UNSIGNED arm64 iPhone device IPA. MUST BE SIGNED BEFORE INSTALLATION.\nUse your compatible UDID certificate/profile signing service. No signing credentials or device ID were used by this build. Physical-device behavior and signing-service compatibility have not been tested.\n')
         report['build_result']='success'

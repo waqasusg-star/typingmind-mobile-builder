@@ -64,6 +64,11 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         updateDockPosition()
     }
 
+    deinit {
+        timer?.invalidate()
+        NotificationCenter.default.removeObserver(self)
+    }
+
     // MARK: - UI
 
     private func buildWebView() {

@@ -1,0 +1,31 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-feature android:name="android.software.picture_in_picture" android:required="false" />
+    <application android:theme="@style/AppTheme" android:label="HDrama" android:enableOnBackInvokedCallback="true"
+        android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:allowBackup="false"
+        android:usesCleartextTraffic="false" android:supportsRtl="true">
+        <service android:name="com.waqas.hdrama.EpisodePreparationService" android:exported="false" android:foregroundServiceType="dataSync" />
+        <activity android:name="com.waqas.hdrama.HistoryActivity" android:exported="false" />
+        <activity android:name="com.waqas.hdrama.DownloadsActivity" android:exported="false" />
+        <activity android:name="com.waqas.hdrama.AccessActivity" android:exported="false" />
+        <activity android:name="com.waqas.hdrama.PlayerActivity" android:exported="false"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
+            android:supportsPictureInPicture="true" />
+        <activity android:name="com.waqas.hdrama.MainActivity" android:exported="true" android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="en.hdrama.net" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -26,6 +26,7 @@ final class StreamResolver: NSObject, WKNavigationDelegate {
     private var deadline: Timer?
     private var completion: ((Result<Stream, Error>) -> Void)?
     private var finished = false
+    private var polling = false
     private var pageUrl = ""
 
     static func resolve(_ pageUrl: String, completion: @escaping (Result<Stream, Error>) -> Void) {
@@ -74,9 +75,12 @@ final class StreamResolver: NSObject, WKNavigationDelegate {
     }
 
     private func poll() {
-        guard !finished, let web = webView else { return }
+        guard !finished, !polling, let web = webView else { return }
+        polling = true
         web.evaluateJavaScript(Scripts.resolverInspect) { [weak self] value, _ in
-            guard let self = self, !self.finished else { return }
+            guard let self = self else { return }
+            self.polling = false
+            guard !self.finished else { return }
             guard let text = value as? String,
                   let data = text.data(using: .utf8),
                   let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }

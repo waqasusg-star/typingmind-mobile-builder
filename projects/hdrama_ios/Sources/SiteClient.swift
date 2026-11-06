@@ -39,7 +39,7 @@ enum SiteClient {
             session.dataTask(with: request) { data, response, error in
                 let result: Result<String, Error>
                 if error != nil {
-                    result = .failure(ClientError.empty)
+                    result = .failure(error!)
                 } else if let http = response as? HTTPURLResponse,
                           let data = data,
                           let html = String(data: data, encoding: .utf8),
@@ -65,10 +65,7 @@ enum SiteClient {
     private static func cookieHeader(for url: URL, completion: @escaping (String?) -> Void) {
         WKWebsiteDataStore.default().httpCookieStore.getAllCookies { cookies in
             guard let host = url.host else { completion(nil); return }
-            let matching = cookies.filter { cookie in
-                let domain = cookie.domain.hasPrefix(".") ? String(cookie.domain.dropFirst()) : cookie.domain
-                return host == domain || host.hasSuffix("." + domain)
-            }
+            let matching = cookies.filter { RequestPolicy.matches($0, url: url) }
             guard !matching.isEmpty else { completion(nil); return }
             completion(matching.map { $0.name + "=" + $0.value }.joined(separator: "; "))
         }

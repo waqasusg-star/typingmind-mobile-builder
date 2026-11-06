@@ -27,15 +27,17 @@ struct DownloadItem: Codable {
 
 final class NetworkMonitor {
     static let shared = NetworkMonitor()
+    static let changed = Notification.Name("hdrama.network.changed")
     private let monitor = NWPathMonitor()
-    private(set) var isWiFi = true
-    private(set) var isOnline = true
+    private(set) var isWiFi = false
+    private(set) var isOnline = false
 
     private init() {
         monitor.pathUpdateHandler = { [weak self] path in
             DispatchQueue.main.async {
                 self?.isWiFi = path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet)
                 self?.isOnline = path.status == .satisfied
+                NotificationCenter.default.post(name: NetworkMonitor.changed, object: nil)
             }
         }
         monitor.start(queue: DispatchQueue(label: "hdrama.network"))
@@ -50,10 +52,12 @@ final class DownloadStore: NSObject {
     private(set) var items: [DownloadItem] = []
     private var resolving = false
     private let defaults = UserDefaults.standard
+    private var networkObserver: NSObjectProtocol?
+    private var backgroundHandlers: [String: () -> Void] = [:]
 
     var wifiOnly: Bool {
         get { defaults.bool(forKey: "downloads.wifiOnly") }
-        set { defaults.set(newValue, forKey: "downloads.wifiOnly") }
+        set { defaults.set(newValue, forKey: "downloads.wifiOnly"); resolveNext() }
     }
 
     private var directory: URL {
@@ -82,6 +86,18 @@ final class DownloadStore: NSObject {
         super.init()
         load()
         reconnect()
+        networkObserver = NotificationCenter.default.addObserver(forName: NetworkMonitor.changed, object: nil, queue: .main) { [weak self] _ in self?.resolveNext() }
+        DispatchQueue.main.async { [weak self] in self?.resolveNext() }
+    }
+
+    func registerBackgroundEvents(_ identifier: String, completion: @escaping () -> Void) {
+        backgroundHandlers[identifier] = completion
+        _ = hlsSession; _ = fileSession
+    }
+
+    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        guard let id = session.configuration.identifier, let handler = backgroundHandlers.removeValue(forKey: id) else { return }
+        DispatchQueue.main.async(execute: handler)
     }
 
     // MARK: - Persistence
@@ -99,7 +115,7 @@ final class DownloadStore: NSObject {
 
     private func persist() {
         guard let data = try? JSONEncoder().encode(items) else { return }
-        try? data.write(to: indexFile)
+        try? data.write(to: indexFile, options: .atomic)
     }
 
     private func notify() {
@@ -119,7 +135,7 @@ final class DownloadStore: NSObject {
 
     func fileURL(for item: DownloadItem) -> URL? {
         guard item.isReady, !item.localPath.isEmpty else { return nil }
-        let url = URL(fileURLWithPath: item.localPath)
+        guard let url = DownloadPaths.resolve(item.localPath, home: URL(fileURLWithPath: NSHomeDirectory())) else { return nil }
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
@@ -148,7 +164,7 @@ final class DownloadStore: NSObject {
     }
 
     private func resolveNext() {
-        guard !resolving else { return }
+        guard !resolving, NetworkMonitor.shared.isOnline else { return }
         guard !(wifiOnly && !NetworkMonitor.shared.isWiFi) else { return }
         guard let item = items.first(where: { $0.state == "queued" }) else { return }
         resolving = true
@@ -249,7 +265,7 @@ final class DownloadStore: NSObject {
         for id in ids {
             cancelTask(id)
             if let item = items.first(where: { $0.id == id }), !item.localPath.isEmpty {
-                try? FileManager.default.removeItem(atPath: item.localPath)
+                if let url = DownloadPaths.resolve(item.localPath, home: URL(fileURLWithPath: NSHomeDirectory())) { try? FileManager.default.removeItem(at: url) }
             }
         }
         items.removeAll { ids.contains($0.id) }
@@ -303,7 +319,7 @@ extension DownloadStore: AVAssetDownloadDelegate {
     func urlSession(_ session: URLSession, assetDownloadTask: AVAssetDownloadTask, didFinishDownloadingTo location: URL) {
         guard let id = assetDownloadTask.taskDescription else { return }
         update(id) { entry in
-            entry.localPath = location.path
+            entry.localPath = DownloadPaths.stored(location, home: URL(fileURLWithPath: NSHomeDirectory()))
             entry.progress = 1
             entry.state = "ready"
         }
@@ -336,7 +352,7 @@ extension DownloadStore: URLSessionDownloadDelegate {
         do {
             try FileManager.default.moveItem(at: location, to: destination)
             update(id) { entry in
-                entry.localPath = destination.path
+                entry.localPath = DownloadPaths.stored(destination, home: URL(fileURLWithPath: NSHomeDirectory()))
                 entry.progress = 1
                 entry.state = "ready"
             }
@@ -381,6 +397,7 @@ final class DownloadsViewController: UIViewController {
     private var observer: NSObjectProtocol?
     private var timer: Timer?
     private var signature = ""
+    private var episodeButtons: [String: UIButton] = [:]
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -388,10 +405,23 @@ final class DownloadsViewController: UIViewController {
         buildHeader()
         buildList()
         observer = NotificationCenter.default.addObserver(forName: DownloadStore.changed, object: nil, queue: .main) { [weak self] _ in
+            guard self?.viewIfLoaded?.window != nil else { return }
             self?.render()
         }
+
+        render()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in self?.render() }
         render()
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        timer?.invalidate(); timer = nil
     }
 
     deinit {
@@ -505,9 +535,18 @@ final class DownloadsViewController: UIViewController {
         let saved = items.filter { $0.isReady }
         summary.text = "\(saved.count) saved · " + String(format: "%.1f MB offline", Double(saved.reduce(0) { $0 + $1.bytes }) / 1_048_576)
 
-        let key = (folder ?? "root") + "|" + items.map { "\($0.id):\($0.state):\(Int($0.progress * 1000))" }.joined()
-        guard key != signature else { return }
+        let key = (folder ?? "root") + "|" + items.map { "\($0.id):\($0.state)" }.joined()
+        guard key != signature else {
+            for item in items {
+                guard let button = episodeButtons[item.id], item.state == "downloading" else { continue }
+                let percentage = Int(min(1, max(0, item.progress.isFinite ? item.progress : 0)) * 100)
+                button.setTitle("\(item.episodeNumber)\n\(percentage)%", for: .normal)
+                button.accessibilityLabel = "Episode \(item.episodeNumber), downloading, \(percentage) percent"
+            }
+            return
+        }
         signature = key
+        episodeButtons.removeAll()
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
 
         if let current = folder, let episodes = folders[current] {
@@ -557,7 +596,7 @@ final class DownloadsViewController: UIViewController {
             switch item.state {
             case "ready": badge = "✓"
             case "failed": badge = "!"
-            case "downloading": badge = "\(Int(item.progress * 100))%"
+            case "downloading": badge = "\(Int(min(1, max(0, item.progress.isFinite ? item.progress : 0)) * 100))%"
             case "paused": badge = "Ⅱ"
             default: badge = "…"
             }
@@ -570,6 +609,7 @@ final class DownloadsViewController: UIViewController {
             button.layer.cornerRadius = 12
             button.heightAnchor.constraint(equalToConstant: 56).isActive = true
             button.tag = position
+            episodeButtons[item.id] = button
             button.accessibilityLabel = "Episode \(item.episodeNumber), \(item.state)"
             button.addTarget(self, action: #selector(tapEpisode(_:)), for: .touchUpInside)
             row?.addArrangedSubview(button)

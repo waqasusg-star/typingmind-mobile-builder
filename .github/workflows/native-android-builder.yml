@@ -1,0 +1,72 @@
+name: Native Android App Builder
+run-name: Native Android Builder / ${{ inputs.project_id }} / ${{ inputs.request_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      project_id: {description: Native Android project, required: true, type: string}
+      request_id: {description: Unique request ID, required: true, type: string}
+      source_sha: {description: Exact source SHA, required: true, type: string}
+permissions:
+  contents: read
+concurrency:
+  group: native-android-${{ inputs.project_id }}-${{ inputs.request_id }}
+  cancel-in-progress: false
+env:
+  PROJECT_ID: ${{ inputs.project_id }}
+  REQUEST_ID: ${{ inputs.request_id }}
+  SOURCE_SHA: ${{ inputs.source_sha }}
+  PYTHONUTF8: '1'
+jobs:
+  build:
+    name: Compile, test and lint native Kotlin app
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ inputs.source_sha }}', persist-credentials: false}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.11.1', cache-read-only: true}
+      - name: Install fixed SDK tools
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Build reviewed native source
+        run: python3 .builder/native_android.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Native-Android-${{ inputs.project_id }}-${{ inputs.request_id }}
+          path: native-android-output/
+          retention-days: 14
+  sign-publish:
+    name: Sign verified APK and publish versioned files
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ inputs.source_sha }}', persist-credentials: false}
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'build-tools;35.0.0'
+      - uses: actions/download-artifact@v4
+        with:
+          name: Native-Android-${{ inputs.project_id }}-${{ inputs.request_id }}
+          path: native-android-release/
+      - name: Sign without executing app code
+        run: python3 .builder/sign_native_android.py
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Native-Android-Signing-${{ inputs.project_id }}-${{ inputs.request_id }}
+          path: native-android-release/
+          retention-days: 14
