@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Removal treats every successful delete as an invalidation so an old cached balance cannot survive an already-missing key.",
+  "description": "Tests exercise the keychain mutation routing (update/add/fail, never delete) and removal with an already-missing key and an old cached balance.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

@@ -275,7 +275,38 @@ func widgetKitChecks() throws {
     let removed = KeyRemovalResult.removed(.changed)
     try expect(removed.isRemoved, "a successful delete is removed")
     try expect(removed.shouldClearCachedBalance, "a successful delete clears the cache")
-    try expect(KeyRemovalResult.removed(.unchanged).shouldClearCachedBalance == false, "deleting an absent key clears nothing")
+    try expect(KeyStoreDecision.invalidates(removed), "a successful delete invalidates")
+
+    // Deleting when no key is loaded must STILL clear an old cached balance.
+    let removedAlreadyGone = KeyRemovalResult.removed(.unchanged)
+    try expect(removedAlreadyGone.isRemoved, "deleting an already-absent key reports removed")
+    try expect(KeyStoreDecision.invalidates(removedAlreadyGone), "an already-absent key still invalidates the cached balance")
+    try expect(KeyStoreDecision.isFailure(removedAlreadyGone) == false, "an already-absent key is not a failure")
+
+    // MARK: Keychain mutation routing — saving must never delete the stored item
+
+    let itemMissing: Int32 = -25300  // errSecItemNotFound
+    let someOtherError: Int32 = -34018
+
+    let updateRoute = KeyStoreMutationRoute.route(probeStatus: 0, itemMissingStatus: itemMissing)
+    try expect(updateRoute == .updateExisting, "a successful update probe routes to updateExisting")
+    try expect(updateRoute.isSuccess, "updateExisting is a success")
+
+    let addRoute = KeyStoreMutationRoute.route(probeStatus: itemMissing, itemMissingStatus: itemMissing)
+    try expect(addRoute == .addNew, "item-not-found routes to addNew")
+    try expect(addRoute.isSuccess, "addNew is a success")
+
+    let failRoute = KeyStoreMutationRoute.route(probeStatus: someOtherError, itemMissingStatus: itemMissing)
+    try expect(failRoute == .fail, "an unexpected status routes to fail")
+    try expect(failRoute.isSuccess == false, "fail is not a success")
+
+    // The critical regression: no route may delete the existing item.
+    try expect(!updateRoute.deletesExistingItem, "updating never deletes the stored item")
+    try expect(!addRoute.deletesExistingItem, "adding never deletes the stored item")
+    try expect(!failRoute.deletesExistingItem, "failing never deletes the stored item")
+
+    // A failed write must not invalidate the account or clear the cache.
+    try expect(KeyStoreDecision.invalidates(KeySaveResult.storeFailed) == false, "a failed write keeps the cached balance")
 
     // MARK: Account generation — a changed account cannot repopulate the cache
 
