@@ -34,7 +34,7 @@ It is a component check: it does not exercise UIKit rendering, VoiceOver, or a p
 ```bash
 # The reviewed worker runs xcodebuild for an arm64 device build and exports an unsigned IPA.
 # Locally, with your own signing team:
- xcodegen generate   # needs project.yml
+xcodegen generate
  xcodebuild -project QabChecklist.xcodeproj -scheme QabChecklist -destination 'generic/platform=iOS' build
 ```
 
