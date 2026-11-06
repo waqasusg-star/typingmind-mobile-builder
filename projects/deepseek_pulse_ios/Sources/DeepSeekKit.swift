@@ -62,9 +62,11 @@ struct HolidayCalendar: Codable, Equatable {
 
     static let empty = HolidayCalendar(dates: [], coverageStart: nil, coverageEnd: nil, verifiedAsOf: nil)
 
+    /// A calendar counts as verified when the user declared the range they checked;
+    /// without declared coverage every weekday stays "unverified".
     var isVerified: Bool {
         guard let start = coverageStart, let end = coverageEnd else { return false }
-        return !dates.isEmpty && start <= end
+        return start <= end
     }
 
     /// ISO date strings compare lexicographically, which is chronological for yyyy-MM-dd.
