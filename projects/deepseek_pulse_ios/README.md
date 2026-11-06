@@ -1,48 +1,48 @@
-# DeepSeek Pulse — iPhone (native Swift/UIKit)
+# DeepSeek Pulse — iPhone (native Swift/UIKit + WidgetKit)
 
-Version 1.0.2 (build 3). Bundle ID `com.waqas.deepseekpulse`, scheme `DeepSeekPulse`, minimum iOS 15.0.
+Version 1.0.3 (build 4). Bundle ID `com.waqas.deepseekpulse`, scheme `DeepSeekPulse`, extension
+`DeepSeekPulseWidgets` (`com.waqas.deepseekpulse.widgets`), App Group
+`group.com.waqas.deepseekpulse`, minimum iOS 15.0.
 
 ## What it shows
 
-- Peak / off-peak pricing state with a live countdown to the next switch, the windows in UTC and in
-  your local time, a 24-hour band and a 7-day outlook that marks weekends and PRC holidays.
-- Your DeepSeek API account balance (total, granted, topped up) from
-  `GET https://api.deepseek.com/user/balance` with your own key, cached for offline display.
+- Peak / off-peak pricing state with the next switch, the windows in UTC and local time, a 24-hour
+  band and a 7-day outlook that marks weekends and PRC holidays.
+- Your DeepSeek API balance (total, granted, topped up) from
+  `GET https://api.deepseek.com/user/balance`, cached for offline display.
 - A rate table for `deepseek-flash` (V4.1-Flash-1017) and `deepseek-v4-pro` (V4-Pro-0813).
-- **Widget Studio** (toolbar gear → "Widgets & Live Activity"): the medium, small, Lock-Screen and
-  Live-Activity widget layouts drawn with your live saved schedule.
+- **A real Home Screen and Lock Screen widget** running in its own WidgetKit extension.
 
-## Widgets: what is real in 1.0.2 and what is not
+## Source layout
 
-| Piece | File | Status |
+| Path | Compiled into | Contents |
 | --- | --- | --- |
-| Shared widget planner | `Sources/WidgetPlanner.swift` | Implemented, compiled, executed checks |
-| Medium widget layout | `Sources/WidgetFullCardView.swift` | Implemented, compiled, shown in Widget Studio |
-| Small widget layout | `Sources/WidgetCompactCardView.swift` | Implemented, compiled |
-| Lock Screen layout | `Sources/WidgetLockScreenCardView.swift` | Implemented, compiled |
-| Live Activity card | `Sources/LiveActivityCardView.swift` | Implemented, compiled |
-| Refresh + deep-link policy | `Sources/WidgetPolicy.swift` | Implemented, compiled |
-| WidgetKit Home-Screen extension | — | **Not shipped** |
-| ActivityKit Live Activity extension | — | **Not shipped** |
+| `Sources/` | app | UIKit screens, Keychain, client, bridge |
+| `Shared/` | app **and** extension | payload types, cache codec, planner, policy |
+| `WidgetSources/` | extension only | `@main` WidgetBundle, timeline provider, SwiftUI views |
+| `Tests/` | CI harnesses | Foundation checks; never in app or extension |
 
-A Home-Screen widget, a Lock-Screen widget and a Dynamic Island Live Activity must live in their own
-WidgetKit / ActivityKit extension targets with their own Info.plist, entitlements and an App Group.
-This pipeline builds a single application target, so those extensions are not in the IPA and are not
-pretended to be.
+The extension compiles `WidgetSources/` + `Shared/` + `Sources/RequestPolicy.swift` only. Everything
+it needs is Foundation or WidgetKit; no UIKit, no `SettingsStore`, no Keychain access.
 
-### Adding the real widget in Xcode
+## How the widget gets its data
 
-1. `brew install xcodegen` then `xcodegen generate` in this source folder.
-2. Xcode → File → New → Target → **Widget Extension** (enable *Include Live Activity* if you want
-   the Dynamic Island card). Bundle id `com.waqas.deepseekpulse.widget`.
-3. Add `Sources/WidgetPlanner.swift`, `Sources/WidgetFullCardView.swift`,
-   `Sources/WidgetCompactCardView.swift`, `Sources/WidgetLockScreenCardView.swift`,
-   `Sources/LiveActivityCardView.swift` and `Sources/WidgetPolicy.swift` to the extension target.
-4. Timeline: `WidgetPlanner.snapshot(schedule: store.schedule, at: Date())`; entry date
-   `WidgetPolicy.refreshDelay(now:nextSwitchAt:)`.
-5. Enable the App Group `group.com.waqas.deepseekpulse` on both targets and point `SettingsStore` at
-   it so the extension reads the same schedule. Use `WidgetPolicy.deepLinkURL()` for the tap target.
-6. Sign with your own team and install.
+1. The app fetches the balance as before. The key stays in the iOS Keychain.
+2. `WidgetBridge` builds a display-only payload and writes it atomically to
+   `widget-snapshot.json` in the App Group container.
+3. `WidgetCenter.shared.reloadTimelines(ofKind:)` asks iOS to redraw.
+4. The extension decodes the payload and computes state, countdown and timeline boundaries offline.
+
+Honest states instead of fake numbers: `LIVE`, `STALE`, `NO DATA`, `SETUP` (App Group missing),
+`UPDATE` (schema mismatch), `UNREADABLE` (corrupt). A missing container never crashes the widget.
+
+## Add the widget on the iPhone
+
+1. Open DeepSeek Pulse once so it writes the snapshot.
+2. Home Screen, touch and hold an empty area, then tap Edit or the + button.
+3. Search DeepSeek Pulse, choose small or medium, tap Add Widget.
+
+Lock Screen: Edit Lock Screen, add a widget, choose DeepSeek Pulse. Requires iOS 16+.
 
 ## Schedule and prices (verified 2026-11-06)
 
@@ -64,36 +64,31 @@ reported as unverified rather than guessed.
 ## Storage and privacy
 
 The API key is written to the iOS Keychain and sent only to `api.deepseek.com/user/balance`,
-enforced by `RequestPolicy.isAllowed(url:)`. The last balance is cached locally.
+enforced by `RequestPolicy.isAllowed(url:)`. The shared widget file never contains the key: it
+holds formatted balance text, the schedule, rate labels and a `hasAPIKey` boolean.
 
-## Rebuild on a Mac
+## Signing (required before installation)
 
-```bash
-xcodegen generate
-open DeepSeekPulse.xcodeproj
-```
+Unsigned output is not installable. The app and the extension must be signed together:
 
-Unsigned command-line build (this is what an unsigned IPA is):
+- the same Apple team for `com.waqas.deepseekpulse` and `com.waqas.deepseekpulse.widgets`;
+- an App Group `group.com.waqas.deepseekpulse` enabled in **both** provisioning profiles;
+- the extension kept inside `DeepSeekPulse.app/PlugIns/`, never stripped.
 
-```bash
-xcodebuild -project DeepSeekPulse.xcodeproj -scheme DeepSeekPulse \
-  -configuration Release -sdk iphoneos -destination generic/platform=iOS \
-  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
-  -archivePath build/DeepSeekPulse.xcarchive archive
-mkdir -p build/Payload
-cp -R build/DeepSeekPulse.xcarchive/Products/Applications/DeepSeekPulse.app build/Payload/
-cd build && zip -qry DeepSeekPulse-iOS-1.0.2-build3-ios-unsigned.ipa Payload
-```
+Without the App Group the widget still installs and shows its `SETUP` state.
 
 ## Tests
 
-`Tests/WidgetPlannerTests.swift` (widget state, minutes left, countdown text, refresh bounds, deep
-link) and `Tests/PolicyTests.swift` (schedule, prices, balance payload, request policy) are
-Foundation component checks. They are not an app, UI or device suite and make no network call.
+- `Tests/PolicyTests.swift` — schedule, prices, balance payload, request policy.
+- `Tests/WidgetPlannerTests.swift` — widget state, minutes left, countdown text, refresh bounds.
+- `Tests/WidgetKitTests.swift` — payload round trip, schema rejection, corruption, staleness
+  boundary, secret guard, sanitising, calendar and boundary behaviour, identity constants.
 
-## Limits
+These are Foundation component checks run on macOS CI. They are not an app, UI, gallery or
+physical-device suite.
 
-- Home-Screen / Lock-Screen widget and Dynamic Island Live Activity extensions are **not** in this
-  IPA; see the table and the Xcode steps above.
-- Prices, windows and holidays are local data verified by hand on 2026-11-06.
-- Unsigned output: MUST BE SIGNED BEFORE INSTALLATION.
+## Rebuild on a Mac
+
+`project.yml` describes the two-target project for XcodeGen. The reviewed CI does not use it: the
+worker generates its own `native-project.json` and Info.plists. Keep the CI values as the source of
+identity. See `BUILDER-REBUILD.md` in the source archive.

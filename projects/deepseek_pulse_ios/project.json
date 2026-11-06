@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Widget Studio now reports the installed extension, writes the shared snapshot and lists the real add-widget steps.",
+  "description": "Changelog and README for 1.0.3 build 4 documenting the real widget, shared data, signing requirements and honest limits.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

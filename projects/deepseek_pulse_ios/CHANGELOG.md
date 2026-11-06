@@ -1,72 +1,74 @@
 # DeepSeek Pulse — changelog
 
-# iPhone 1.0.2 / build 3
+# iPhone 1.0.3 / build 4
 
-Adds the missing widget work without changing the bundle ID, the Keychain API key, the saved
-schedule or the price data.
+Adds a **real WidgetKit widget** as an embedded extension. Bundle ID, scheme, Keychain API key,
+saved schedule, prices and cached balance all carry over unchanged.
 
-## Added
+## Added — a genuine Home Screen and Lock Screen widget
 
-- **Widget Studio screen** (`Sources/WidgetStudioViewController.swift`), opened from the dashboard
-  toolbar menu (gear → "Widgets & Live Activity"). It renders four widget-sized layouts with the
-  live saved schedule and states exactly what is still missing for the Home Screen.
-- **Widget layouts**: `WidgetFullCardView` (medium: state pill, countdown, next switch, minutes of
-  peak left today, 24-hour band), `WidgetCompactCardView` (small), `WidgetLockScreenCardView` and
-  `LiveActivityCardView` (Dynamic Island / Live Activity card). They reuse the app's own colours,
-  PillView and DayTimelineView so a widget cannot drift from the app.
-- **Shared planner** `Sources/WidgetPlanner.swift`: Foundation-only widget state — PEAK / OFF-PEAK /
-  STANDARD, peak minutes left today, total peak minutes of the day, next switch instant, day tag,
-  compact countdown text, next-switch label in the device time zone and the unverified-calendar
-  flag.
-- **Widget refresh policy** `Sources/WidgetPolicy.swift`: refresh just after the next switch, a
-  60-second floor, a one-hour ceiling, the `deepseekpulse://status` deep link and the App Group and
-  cache-key names to use when a widget extension is added.
-- **Executed widget checks** (`Tests/WidgetPlannerTests.swift` + `Tests/WidgetPlannerMain.swift`):
-  state at both window edges, minutes left today, weekend and holiday suppression, the 2028
-  unverified flag, countdown text, label helpers, refresh bounds and the deep-link check.
+- **New extension target** `DeepSeekPulseWidgets`, bundle `com.waqas.deepseekpulse.widgets`, embedded
+  in the app as a `.appex`. This is a real WidgetKit extension, not an in-app preview.
+- `WidgetSources/WidgetBundle.swift` — canonical `@main` `WidgetBundle` declaring `PulseWidget`
+  (kind `DeepSeekPulseWidget`).
+- `WidgetSources/WidgetTimelineProvider.swift` — `PulseTimelineProvider` with placeholder, snapshot
+  and timeline. Entries are placed at the next peak/off-peak boundary the app computes locally,
+  plus a bounded follow-up. iOS decides when these are honoured.
+- `WidgetSources/WidgetViews.swift` — real SwiftUI views: small, medium, and iOS 16 accessory
+  inline / circular / rectangular with `privacySensitive`. Deployment target stays iOS 15.
+- Supported families: small and medium on iOS 15+; Lock Screen accessories on iOS 16+. This is not
+  a Dynamic Island or Live Activity; none is claimed or shipped.
+
+## Added — shared data layer
+
+- `Shared/WidgetSharedTypes.swift` — `WidgetShared`, `WidgetDataState`, `WidgetBalance`,
+  `WidgetRate`, `WidgetSnapshotPayload`, `WidgetSnapshotEnvelope`. Foundation only.
+- `Shared/WidgetCacheStore.swift` — `WidgetCacheCodec` (encode, decode, schema probe, sanitising,
+  stale calculation, secret-value guard) and `WidgetCacheLocation` for the App Group container.
+- `Shared/WidgetPlanner.swift` and `Shared/WidgetPolicy.swift` — moved out of `Sources/` so the
+  extension can compile them. The `Sources/` copies are reduced to comment-only stubs, so nothing
+  is defined twice and the app and widget share one implementation.
+- `Sources/WidgetBridge.swift` — app-side writer: builds a display-only payload, encodes it,
+  refuses to write anything matching a secret value, writes atomically, then calls
+  `WidgetCenter.shared.reloadTimelines`.
 
 ## Changed
 
-- Version 1.0.1 (build 2) → **1.0.2 (build 3)**.
-- The toolbar gear now opens a menu: **Settings** and **Widgets & Live Activity**.
+- Version 1.0.2 (build 3) to **1.0.3 (build 4)**.
+- **Dashboard** writes the shared snapshot after every successful balance fetch.
+- **Settings** rewrites the snapshot after Save (schedule, rates, holidays, key).
+- **Remove key** now also rewrites the snapshot, so a removed account leaves no balance numbers on
+  the Home Screen.
+- **Widget Studio** describes the installed extension, lists the real add-widget steps, and reports
+  the snapshot write result. The UIKit cards remain previews only.
+
+## Privacy and storage
+
+- The API key remains only in the iOS Keychain. The shared file contains formatted balance text,
+  the schedule, rate labels and a `hasAPIKey` boolean — never the key, never a token.
+- A final guard rejects any encoded payload containing `sk-`, `bearer `, `authorization`,
+  `apikey`, `access_token`, `refresh_token`, `client_secret` or `password` values.
+- Widget data is marked privacy sensitive, so a locked device hides the balance text.
 
 ## Honest limits of this build
 
-- This pipeline saves text source for one application target and the build machine generates a
-  single-target project. A Home-Screen widget, a Lock-Screen widget and a Live Activity require
-  separate WidgetKit / ActivityKit extension targets with their own Info.plist entries,
-  entitlements and an App Group. Those package structures cannot be produced here, so **they are
-  not in this IPA** — the layouts, the planner, the refresh policy and the Live Activity card are
-  in the app, and Widget Studio shows them.
-- To get them on the Home Screen and Dynamic Island: rebuild the delivered source ZIP in Xcode and
-  add a Widget Extension target that includes `WidgetPlanner.swift` and the widget view files, then
-  sign and install (README has the steps).
+- If the App Group entitlement is absent from either bundle, the widget shows a setup message and
+  no numbers. It does not crash and does not invent values.
+- Unsigned IPA output: **MUST BE SIGNED BEFORE INSTALLATION.** The app and the extension must be
+  signed together with the same team and matching App Group profiles. Whether a given signing
+  service supports app extensions and App Groups is not verified by this build.
+- No physical-device, widget-gallery or shared-container test was run here.
 - Prices, peak windows and the PRC holiday list remain local data verified on 2026-11-06.
-- Unsigned IPA output: MUST BE SIGNED BEFORE INSTALLATION. No physical-device widget test was run.
+
+# iPhone 1.0.2 / build 3
+
+Widget Studio previews, shared planner and refresh policy, still without an extension target.
 
 # iPhone 1.0.1 / build 2
 
-Corrects obsolete pricing and schedule data, adds a verified PRC holiday calendar, makes the
-assumption state honest, and makes the source archive independently rebuildable.
-
-## Fixed
-
-- **Obsolete schedule removed.** Peak is now the published set of UTC weekday intervals —
-  **Monday–Friday 01:00–04:00 and 06:00–10:00 UTC** — excluding PRC public holidays; every other
-  hour, every weekend and every PRC public holiday is off-peak.
-- **Obsolete prices removed**: `deepseek-flash` (V4.1-Flash-1017) 0.006 / 0.30 / 1.20 and
-  `deepseek-v4-pro` (V4-Pro-0813) 0.044 / 1.32 / 3.96 USD per 1M tokens, both 50% off off-peak.
-- **Verified PRC holiday calendar 2026–2027** (62 dates, coverage 2026-01-01…2027-12-31) with later
-  years reported as unverified instead of guessed.
-- **Weekends are always off-peak**, so a make-up working Saturday never becomes peak.
-- **Current state and countdown** walk across nights, weekends and holidays; multi-day gaps render
-  as `2d 14h 30m`.
-- **24-hour band and 7-day outlook** drawn from the real intervals.
-- **Verified vs custom is explicit** in the dashboard, the rate caption and Settings.
-- **Migration schema 1/2 → 3** keeps the Keychain key and cached balance.
-- **Source archive is independently rebuildable** through `project.yml` (XcodeGen).
+Corrected obsolete pricing and schedule data, added a verified PRC holiday calendar, made the
+assumption state honest, and made the source archive independently rebuildable.
 
 # iPhone 1.0.0 / build 1
 
-First native Swift/UIKit release. Superseded because the seeded 16:30–00:30 window and the
-`deepseek-chat` / `deepseek-reasoner` prices were obsolete.
+First native Swift/UIKit release.
