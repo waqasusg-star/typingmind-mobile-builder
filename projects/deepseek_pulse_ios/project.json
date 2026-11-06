@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Neutralise the leftover Shared/WidgetPlanner.swift and both retired markers so only WidgetPlannerCore/WidgetPolicyCore declare those types.",
+  "description": "Remove obsolete comment-only marker files; exactly one implementation of WidgetPlanner and WidgetPolicy remains, in Shared/WidgetPlannerCore.swift and Shared/WidgetPolicyCore.swift.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
