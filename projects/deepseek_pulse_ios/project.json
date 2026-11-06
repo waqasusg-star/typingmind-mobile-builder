@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "DeepSeek Pulse 1.0.3 (build 4): real WidgetKit extension with shared App Group snapshot (no API key) and executed Foundation widget-cache tests.",
+  "description": "DeepSeek Pulse 1.0.3 (build 4): shared Foundation widget snapshot types and cache codec for the App Group.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
