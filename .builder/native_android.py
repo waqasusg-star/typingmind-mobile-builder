@@ -56,6 +56,37 @@ dependencies {
  (work/'app/build.gradle.kts').write_text(text)
  return c
 
+
+def artifact_prefix(app_name):
+ value=re.sub(r'[^A-Za-z0-9_]','',str(app_name))[:50]
+ return value if re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,49}',value)else 'App'+value[:47]
+
+def package_source(source,work,out,stem,report):
+ archive=out/(stem+'-source.zip');prefix=report['artifact_prefix']+'Native/';entries={}
+ for p in sorted(work.rglob('*')):
+  rel=p.relative_to(work)
+  if any(part in {'.gradle','build','.idea','.git'}for part in rel.parts)or p.name=='local.properties':continue
+  if p.is_symlink():raise ValueError('Source archive refuses symlinks')
+  if not p.is_file():continue
+  if p.suffix.lower()in {'.jks','.keystore','.pem','.key','.p12','.pfx','.mobileprovision'}:raise ValueError('Signing material refused in source archive')
+  if p.stat().st_size>2097152:raise ValueError('Oversized source file')
+  entries[prefix+rel.as_posix()]=p.read_bytes()
+ for name in ['project.json','README.md','CHANGELOG.md']:
+  p=source/name
+  if not p.is_file()or p.is_symlink():raise ValueError('Complete source delivery requires '+name)
+  entries[prefix+name]=p.read_bytes()
+ entries[prefix+'SOURCE-COMMIT.txt']=(report['source_sha']+'\n').encode()
+ entries[prefix+'BUILDING.md']=('Rebuild this exact Android project\n\nRequires JDK 17, Android SDK 35/build-tools 35.0.0 and network access to the declared public Maven/Gradle repositories.\nSet ANDROID_HOME to your SDK, then run ./gradlew testDebugUnitTest lintRelease assembleDebug (Windows: gradlew.bat).\nFor an unsigned release use ./gradlew assembleRelease. Release signing uses the owner existing private key in a separate process; no signing material is included.\nSource '+report['source_sha']+'\n').encode()
+ required={prefix+name for name in ['gradlew','gradlew.bat','gradle/wrapper/gradle-wrapper.jar','gradle/wrapper/gradle-wrapper.properties','settings.gradle.kts','build.gradle.kts','app/build.gradle.kts','app/src/main/AndroidManifest.xml']}
+ if not required<=set(entries):raise ValueError('Incomplete standalone Gradle source project')
+ if sum(map(len,entries.values()))>20971520:raise ValueError('Source archive exceeds 20 MiB')
+ with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED)as z:
+  for name,data in sorted(entries.items()):
+   item=zipfile.ZipInfo(name);item.compress_type=zipfile.ZIP_DEFLATED;item.external_attr=(0o100755 if name.endswith('/gradlew')else 0o100644)<<16;z.writestr(item,data)
+ with zipfile.ZipFile(archive)as z:
+  if z.testzip()or set(z.namelist())!=set(entries):raise ValueError('Invalid source archive')
+ return archive
+
 def file_record(p):return dict(name=p.name,size_bytes=p.stat().st_size,sha256=hashlib.sha256(p.read_bytes()).hexdigest())
 
 def build():
@@ -71,7 +102,7 @@ def build():
   source=root/'projects'/r['project_id'];work=Path(os.environ['RUNNER_TEMP'])/('native-android-'+r['request_id']);c=prepare(source,work)
   if c['project_id']!=r['project_id']:raise ValueError('Project ID mismatch')
   r.update(app_name=c['app_name'],bundle_id=c['bundle_id'],version=c['version'],build_number=str(c['build_number']),original_certificate_sha256=c.get('original_certificate_sha256',''))
-  run(['gradle','--version'],work);run(['gradle','testDebugUnitTest','lintRelease','assembleRelease','--no-daemon','--stacktrace'],work)
+  run(['gradle','--version'],work);run(['gradle','wrapper','--gradle-version','8.11.1','--distribution-type','bin','--no-daemon'],work);run(['gradle','testDebugUnitTest','lintRelease','assembleRelease','--no-daemon','--stacktrace'],work)
   suites=[ET.parse(p).getroot() for p in (work/'app/build/test-results/testDebugUnitTest').glob('TEST-*.xml')]
   count=sum(int(s.get('tests','0')) for s in suites);fail=sum(int(s.get('failures','0'))+int(s.get('errors','0')) for s in suites)
   if count<1 or fail:raise ValueError('No passing native unit tests')
@@ -79,12 +110,8 @@ def build():
   apk=work/'app/build/outputs/apk/release/app-release-unsigned.apk';sdk=Path(os.environ['ANDROID_HOME'])/'build-tools/35.0.0';badging=run([sdk/'aapt','dump','badging',apk])
   for field,val in [('name',c['bundle_id']),('versionCode',c['build_number']),('versionName',c['version'])]:
    if field+"='"+str(val)+"'" not in badging.splitlines()[0]:raise ValueError('APK identity/version mismatch')
-  r['package_verified']=True;stem='HDrama-Android-'+c['version']+'-build'+str(c['build_number']);package=out/(stem+'-unsigned.apk');shutil.copy2(apk,package)
-  archive=out/(stem+'-source.zip')
-  with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
-   for p in sorted(source.rglob('*')):
-    if p.is_file() and not p.is_symlink() and p.suffix.lower() not in {'.jks','.keystore','.pem','.key','.p12'}:z.write(p,'HDramaNative/'+p.relative_to(source).as_posix())
-   z.writestr('HDramaNative/SOURCE-COMMIT.txt',r['source_sha']+'\n')
+  r['package_verified']=True;r['artifact_prefix']=artifact_prefix(c['app_name']);stem=r['artifact_prefix']+'-Android-'+c['version']+'-build'+str(c['build_number']);package=out/(stem+'-unsigned.apk');shutil.copy2(apk,package)
+  archive=package_source(source,work,out,stem,r)
   r['source_package_verified']=True;r['files']=[file_record(p) for p in [package,archive]]
   if(source/'CHANGELOG.md').is_file():shutil.copy2(source/'CHANGELOG.md',out/'CHANGELOG.md')
   r['build_result']='success'
