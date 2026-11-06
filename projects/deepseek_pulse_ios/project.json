@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Correct the WidgetPlannerCore header: the old Sources stub was removed, not retained.",
+  "description": "Changelog records the duplicate-basename compile fix found in real CI output.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

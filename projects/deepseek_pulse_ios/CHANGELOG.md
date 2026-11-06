@@ -32,6 +32,14 @@ saved schedule, prices and cached balance all carry over unchanged.
 
 ## Fixes in this build (found by inspecting real CI output)
 
+- **Duplicate Swift basenames broke the app archive.** Two files named `WidgetPlanner.swift` (in
+  `Sources/` and `Shared/`) — and likewise `WidgetPolicy.swift` — existed in both the app target and
+  the widget extension target. Swift rejects that with `Filename "WidgetPlanner.swift" used twice`
+  even when one copy declares nothing, so the archive step failed while both test suites passed.
+  The obsolete `Sources/` and duplicate `Shared/` copies were deleted, and the single remaining
+  implementations are `Shared/WidgetPlannerCore.swift` and `Shared/WidgetPolicyCore.swift`, compiled
+  into both targets. No marker or stub files remain.
+
 - **Stale boundary was unreachable.** The widget test suite failed with
   "exactly at the stale limit is still fresh" because the assertion measured from the wrong
   reference. The threshold is now measured from `balanceFetchedAt`, and the timeline planner emits
