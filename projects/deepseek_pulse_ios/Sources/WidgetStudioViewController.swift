@@ -74,6 +74,7 @@ final class WidgetStudioViewController: UIViewController {
         stack.addArrangedSubview(titledCard(title: "Home Screen · small", caption: "State and countdown only.", content: compactCard, height: 150))
         stack.addArrangedSubview(titledCard(title: "Lock Screen", caption: "Single-line state and countdown.", content: lockCard, height: 92))
         stack.addArrangedSubview(titledCard(title: "In-app card", caption: "Same data as the expanded widget layout. This is not a Dynamic Island Live Activity.", content: liveCard, height: 132))
+
         let policy = CardView()
         policy.content.addArrangedSubview(Labels.title("Refresh policy"))
         policy.content.addArrangedSubview(Labels.caption("The countdown and the peak/off-peak badge are drawn by iOS itself, so they keep changing while your phone is locked and without the app running. The app asks iOS to redraw the widget after a balance refresh or a settings change. iOS controls when that redraw happens and normally allows roughly one every 15 minutes, longer in Low Power Mode. The widget makes no network request and never reads your API key."))
