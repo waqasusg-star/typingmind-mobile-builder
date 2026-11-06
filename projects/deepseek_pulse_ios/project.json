@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "SettingsStore returns explicit save/remove results, preserves the old key and cache on a failed write, and invalidates only after a confirmed change.",
+  "description": "Settings honours the explicit key store/removal result instead of inferring success from a re-read.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

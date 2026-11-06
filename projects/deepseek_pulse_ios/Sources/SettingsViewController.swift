@@ -505,12 +505,16 @@ final class SettingsViewController: UIViewController {
     @objc private func removeKey() {
         let store = SettingsStore.shared
         // Invalidate first: any in-flight balance response then belongs to a dead generation.
-        let cleared = store.removeAPIKey()
+        let result = store.removeAPIKey()
+        guard result.isRemoved else {
+            alert("Keychain error", "The API key could not be removed from the iOS Keychain. Nothing was changed.")
+            return
+        }
         keyField.text = ""
         let widgetResult = WidgetBridge.refresh(store: store)
         NotificationCenter.default.post(name: .deepSeekSettingsChanged, object: nil)
         var message = "The key was deleted from the Keychain."
-        if cleared {
+        if result.shouldClearCachedBalance {
             message += " The cached balance was cleared."
         }
         if widgetResult == .groupUnavailable {
@@ -642,13 +646,15 @@ final class SettingsViewController: UIViewController {
         let ratesAreCustom = models != RateSeeds.models
 
         let key = keyField.text ?? ""
-        // replaceAPIKey compares against the stored key: a real change invalidates the previous
-        // account and clears its cached balance, so numbers from the old account cannot linger.
+        // replaceAPIKey reports what actually happened. A keychain failure must abort the save
+        // rather than silently continuing with the previous key still in place.
         if !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            store.replaceAPIKey(key)
-            if KeyStore.load()?.isEmpty ?? true {
-                alert("Keychain error", "The API key could not be stored in the iOS Keychain. Try again.")
+            switch store.replaceAPIKey(key) {
+            case .storeFailed:
+                alert("Keychain error", "The API key could not be stored in the iOS Keychain. Your previous key and cached balance are unchanged. Try again.")
                 return
+            case .saved:
+                break
             }
         }
 
