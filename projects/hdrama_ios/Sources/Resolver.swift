@@ -42,13 +42,16 @@ final class StreamResolver: NSObject, WKNavigationDelegate {
         configuration.allowsInlineMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
         let controller = WKUserContentController()
-        // Same blocking as the browser: ad gates no longer delay the Play click this resolver needs.
-        AdBlocker.configure(controller)
+        // Same blocking as the browser, main frame only, so a Cloudflare frame is never touched.
+        AdBlocker.configure(controller, mainFrameOnly: true)
         controller.addUserScript(WKUserScript(source: Scripts.observer, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         configuration.userContentController = controller
 
         let web = WKWebView(frame: CGRect(x: 0, y: 0, width: 1, height: 1), configuration: configuration)
         web.navigationDelegate = self
+        // The same Safari user agent as the browser: a resolver that looks like a bare web view can
+        // be denied by the site's protection even when the browser has already passed the check.
+        web.customUserAgent = UserAgent.current
         web.alpha = 0.01
         web.isUserInteractionEnabled = false
         web.accessibilityElementsHidden = true

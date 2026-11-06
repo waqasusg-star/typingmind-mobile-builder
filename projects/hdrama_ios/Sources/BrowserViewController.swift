@@ -70,13 +70,17 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         configuration.mediaTypesRequiringUserActionForPlayback = .all
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         let controller = WKUserContentController()
-        AdBlocker.configure(controller)
-        controller.addUserScript(WKUserScript(source: Scripts.install, injectionTime: .atDocumentEnd, forMainFrameOnly: false))
+        // Main frame only: the ad DOM script must never run inside the Cloudflare verification frame.
+        AdBlocker.configure(controller, mainFrameOnly: true)
+        controller.addUserScript(WKUserScript(source: Scripts.install, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         configuration.userContentController = controller
         webView = WKWebView(frame: .zero, configuration: configuration)
         webView.translatesAutoresizingMaskIntoConstraints = false
         webView.navigationDelegate = self
         webView.uiDelegate = self
+        // A normal Safari user agent; the default WKWebView string can be treated as an unsupported
+        // client by the site's bot protection, which is one reason a check can fail to pass.
+        webView.customUserAgent = UserAgent.current
         webView.allowsBackForwardNavigationGestures = true
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.backgroundColor = AppColors.background
@@ -345,6 +349,12 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
                 launchRequested = true
                 inspectPage()
             }
+            return
+        }
+        // Cloudflare verification must be allowed to load and finish, including in its own frame.
+        // 1.1.0 cancelled this traffic, which could stop the check from ever completing.
+        if SitePolicy.verificationURL(url) {
+            decisionHandler(.allow)
             return
         }
         // itms-apps://, intent://, market:// and mailto:// are advertising or store redirects.
