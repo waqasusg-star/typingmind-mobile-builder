@@ -37,7 +37,7 @@ func expect(_ value: @autoclosure () -> Bool, _ message: String) { if !value() {
   expect(!gate.accepts(resumed, itemID: "episode", state: "queued"), "Duplicate completion cannot start another task")
   print("PASS: 24 request/path and cancellation checks; not a full app/UI/device test suite")
 
-  // Simulated playback cadence: the player checkpoints every 5 s, storage window is 15 s.
+  // Simulated playback cadence: the player checkpoints every 5 s, the storage window is 15 s.
   let base = Date(timeIntervalSince1970: 1_700_000_000)
   var writes = 0
   var lastWrite: Date?
@@ -56,12 +56,11 @@ func expect(_ value: @autoclosure () -> Bool, _ message: String) { if !value() {
   }
   expect(writes == 5, "60 s of 5 s checkpoints writes 5 times instead of 13")
   expect(storedPosition == 60, "The last written position is the newest checkpoint boundary")
-  pendingPosition = 65
   expect(!ProgressWritePolicy.shouldFlush(last: base.addingTimeInterval(60), now: base.addingTimeInterval(65), force: false), "A checkpoint inside the 15 s window is deferred")
-  pendingPosition = 70
-  expect(ProgressWritePolicy.shouldFlush(last: base.addingTimeInterval(60), now: base.addingTimeInterval(70), force: false), "The deferred value is written at the next boundary")
-  expect(pendingPosition == 70, "The deferred value is the latest position, not the first one")
-  expect(ProgressWritePolicy.shouldFlush(last: base.addingTimeInterval(69), now: base.addingTimeInterval(70), force: true), "Pause, dismiss, seek and background flush bypass the window")
+  pendingPosition = 75
+  expect(ProgressWritePolicy.shouldFlush(last: base.addingTimeInterval(60), now: base.addingTimeInterval(75), force: false), "The deferred value is written at the next 15 s boundary")
+  expect(pendingPosition == 75, "The deferred value is the latest position, not the first one")
+  expect(ProgressWritePolicy.shouldFlush(last: base.addingTimeInterval(74), now: base.addingTimeInterval(75), force: true), "Pause, dismiss, seek and background flush bypass the window")
   expect(ProgressWritePolicy.minimumInterval > 5, "The storage window is longer than the 5 s checkpoint cadence")
   print("PASS: 6 progress-cadence checks; not a full app/UI/device test suite")
  }
