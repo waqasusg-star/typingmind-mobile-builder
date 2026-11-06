@@ -70,8 +70,9 @@ enum WidgetTimelinePlanner {
 
     /// Hard cap on entries in one timeline.
     static let maximumEntries = 12
-    /// Entries that are never dropped: `now`, at most one near transition and the stale crossing.
-    static let reservedEntries = 3
+    /// Transitions reserved before optional fill, so one trading day fits (01:00/04:00/06:00/10:00)
+    /// while the plan still stays bounded on a schedule with many windows.
+    static let transitionsBeforeOptionalFill = 6
     /// How far ahead the plan looks for real boundaries.
     static let horizon: TimeInterval = 24 * 60 * 60
 
@@ -106,13 +107,18 @@ enum WidgetTimelinePlanner {
         // 1. Always present: the current instant.
         let nowBoundary = Boundary(date: now, reason: .now)
 
-        // 2. The first real transition inside the horizon (+ a little slack so a bound at the edge
-        //    is still captured). Reserved, so the cap cannot drop it.
+        // 2. Every real transition inside the horizon, not just the first. A trading day has four
+        //    (01:00, 04:00, 06:00, 10:00 UTC); planning only the nearest one would leave the widget
+        //    showing PEAK long after the window ended, because a later midnight entry does not ask
+        //    iOS for a reload. The cursor advances so each step is strictly later.
         var transitionBoundaries: [Boundary] = []
-        if let step = schedule.nextTransition(after: now),
-           step.date > now,
-           step.date <= horizonEnd {
+        var cursor = now
+        while transitionBoundaries.count < transitionsBeforeOptionalFill {
+            guard let step = schedule.nextTransition(after: cursor) else { break }
+            guard step.date > cursor else { break }
+            guard step.date <= horizonEnd else { break }
             transitionBoundaries.append(Boundary(date: step.date, reason: .peakSwitch))
+            cursor = step.date
         }
 
         // 3. The stale crossing, one second past the threshold so the entry really decodes as stale.

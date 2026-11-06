@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Circular and rectangular accessories show a live native timer or an explicit snapshot label; no static text is presented as a live countdown.",
+  "description": "Timeline planner walks every real transition inside the 24-hour horizon and exposes a bounded reloadDate; the provider uses a timed policy.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
