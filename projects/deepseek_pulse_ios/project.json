@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Reattach widgetURL on the final root of WidgetEntryView and use the native timer countdown in inline and rectangular accessories.",
+  "description": "Circular and rectangular accessories show a live native timer or an explicit snapshot label; no static text is presented as a live countdown.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

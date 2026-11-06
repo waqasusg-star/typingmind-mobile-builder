@@ -201,7 +201,9 @@ struct PulseCircularView: View {
         Gauge(value: progress) {
             Text("Peak")
         } currentValueLabel: {
-            Text(entry.envelope.state.isUsable ? entry.countdownText : "--")
+            // A gauge cannot host a ticking Text, so the centre shows the state word rather than a
+            // frozen number that would look like a live countdown.
+            Text(entry.envelope.state.isUsable ? entry.headline : "--")
                 .font(.system(size: 9, weight: .bold))
                 .minimumScaleFactor(0.5)
         }
