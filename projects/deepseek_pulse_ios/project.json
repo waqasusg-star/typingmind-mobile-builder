@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Timeline planner walks every real transition inside the 24-hour horizon and exposes a bounded reloadDate; the provider uses a timed policy.",
+  "description": "Add WidgetTimelinePlanner.reloadDate so the provider can request a bounded timed reload instead of an open-ended atEnd policy.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

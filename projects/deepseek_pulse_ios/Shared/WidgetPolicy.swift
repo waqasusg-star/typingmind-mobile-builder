@@ -192,4 +192,13 @@ enum WidgetTimelinePlanner {
                    dataFetchedAt: dataFetchedAt,
                    staleAfter: staleAfter).map { $0.date }
     }
+
+    /// The next instant the widget should be allowed to ask iOS for fresh data.
+    ///
+    /// Bounded by WidgetPolicy.maximumRefreshInterval so a timeline never asks for more than the
+    /// policy allows. iOS still applies its own budget and may return the reload later; this is a
+    /// request, not a promise.
+    static func reloadDate(now: Date) -> Date {
+        now.addingTimeInterval(WidgetPolicy.maximumRefreshInterval)
+    }
 }
