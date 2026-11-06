@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Explicit KeySaveResult so a failed Keychain write is never reported as saved, plus pure decision logic for tests.",
+  "description": "SettingsStore returns explicit save/remove results, preserves the old key and cache on a failed write, and invalidates only after a confirmed change.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

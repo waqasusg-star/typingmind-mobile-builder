@@ -84,36 +84,38 @@ final class SettingsStore {
         accountGeneration.ticket()
     }
 
-    /// Stores the key and invalidates the previous account when it actually changed.
-    /// The comparison happens here, in memory, next to the Keychain: the old and new key are never
-    /// hashed, persisted or put into the shared container.
-    /// - Returns: true when the cached balance was cleared.
-    @discardableResult
-    func replaceAPIKey(_ newKey: String) -> Bool {
+    /// Stores the key and reports exactly what happened.
+    ///
+    /// On a failed keychain write the previous key, cached balance and generation are left
+    /// untouched, so the caller can never report "saved" for a key that is not actually stored.
+    /// The old and new key are compared in memory here and never hashed, persisted or shared.
+    func replaceAPIKey(_ newKey: String) -> KeySaveResult {
         let previousKey = KeyStore.load()
         let change = KeyChange.compare(previous: previousKey, next: newKey)
         let trimmed = KeyChange.normalise(newKey)
-        if trimmed.isEmpty {
-            KeyStore.delete()
-        } else if !KeyStore.save(trimmed) {
-            return false
+        guard KeyStore.save(trimmed) else {
+            return .storeFailed
         }
-        return applyKeyChange(change)
+        let result = KeySaveResult.saved(change)
+        if KeyStoreDecision.invalidates(result) {
+            accountGeneration.invalidate()
+            cachedSnapshot = nil
+        }
+        return result
     }
 
-    /// Removes the key and invalidates the account.
-    @discardableResult
-    func removeAPIKey() -> Bool {
+    /// Removes the key and reports exactly what happened.
+    func removeAPIKey() -> KeyRemovalResult {
         let previousKey = KeyStore.load()
-        KeyStore.delete()
-        return applyKeyChange(KeyChange.compare(previous: previousKey, next: nil))
-    }
-
-    private func applyKeyChange(_ change: KeyChange) -> Bool {
-        guard change.clearsCachedBalance else { return false }
-        accountGeneration.invalidate()
-        cachedSnapshot = nil
-        return true
+        guard KeyStore.delete() else {
+            return .deleteFailed
+        }
+        let result = KeyRemovalResult.removed(KeyChange.compare(previous: previousKey, next: nil))
+        if KeyStoreDecision.invalidates(result) {
+            accountGeneration.invalidate()
+            cachedSnapshot = nil
+        }
+        return result
     }
 
     /// True when a finished request may still write to the cache.
