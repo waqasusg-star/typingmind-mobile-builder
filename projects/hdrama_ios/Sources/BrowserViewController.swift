@@ -18,6 +18,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
     private var dockBottom: NSLayoutConstraint!
     private var progressObservation: NSKeyValueObservation?
     private var timer: Timer?
+    private var followUpWork: DispatchWorkItem?
 
     private var inspecting = false
     private var inspectingEpoch = -1
@@ -45,7 +46,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
             self.loadHome()
         }
         timer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: true) { [weak self] _ in
-            self?.inspectPage()
+            self?.timerTick()
         }
     }
 
@@ -57,6 +58,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         timer?.fireDate = .distantFuture
+        followUpWork?.cancel()
     }
 
     override func viewSafeAreaInsetsDidChange() {
@@ -66,6 +68,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
 
     deinit {
         timer?.invalidate()
+        followUpWork?.cancel()
         NotificationCenter.default.removeObserver(self)
     }
 
@@ -231,6 +234,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
             self.validatedSeries = nil
             self.footerHeight = 0
             self.playAction.isHidden = true
+            self.followUpWork?.cancel()
             self.buildWebView()
             self.webView.load(URLRequest(url: destination))
             self.updateDockPosition()
@@ -254,8 +258,32 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
 
     // MARK: - Inspection
 
+    /// Series and episode pages need repeated inspection while the page settles; the rest of the site
+    /// is inspected once per navigation plus one follow-up after layout, instead of every 1.2 s.
+    private var isSeriesLikePage: Bool {
+        guard let url = webView.url?.absoluteString else { return false }
+        return BrowserPolicy.playback(url) != nil
+    }
+
+    private func timerTick() {
+        guard isSeriesLikePage else { return }
+        inspectPage()
+    }
+
+    private func scheduleFollowUpInspection() {
+        followUpWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self, !self.isSeriesLikePage else { return }
+            self.inspectPage()
+        }
+        followUpWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
+    }
+
     private func inspectPage() {
-        guard !compatibilityEnabled, !keyboardVisible, !inspecting, let url = webView.url?.absoluteString,
+        guard !compatibilityEnabled, !keyboardVisible, !inspecting,
+              viewIfLoaded?.window != nil,
+              let url = webView.url?.absoluteString,
               SitePolicy.siteURL(url) != nil else { return }
         inspecting = true
         let epoch = inspectionEpoch
@@ -439,6 +467,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         refreshControl.endRefreshing()
         progressBar.isHidden = true
         inspectPage()
+        scheduleFollowUpInspection()
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
