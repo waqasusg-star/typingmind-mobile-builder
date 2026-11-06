@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Account policy without fingerprints: the app compares normalized keys in memory only, and Shared exposes a pure generation decision for real Swift tests.",
+  "description": "SettingsStore compares the normalized old and new key in memory only; no fingerprint is computed, stored or shared.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

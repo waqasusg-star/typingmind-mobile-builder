@@ -79,43 +79,39 @@ final class SettingsStore {
     /// Increments whenever the account changes, so late responses for a previous key are discarded.
     private(set) var accountGeneration = AccountGeneration.initial
 
-    /// Fingerprint of the key the cached balance belongs to. In memory only, never persisted.
-    private var cachedKeyFingerprint: Int?
-
     /// A ticket for a balance request that is about to start.
     func currentAccountTicket() -> AccountTicket {
         accountGeneration.ticket()
     }
 
     /// Stores the key and invalidates the previous account when it actually changed.
-    /// Returns true when the cache was cleared.
+    /// The comparison happens here, in memory, next to the Keychain: the old and new key are never
+    /// hashed, persisted or put into the shared container.
+    /// - Returns: true when the cached balance was cleared.
     @discardableResult
     func replaceAPIKey(_ newKey: String) -> Bool {
-        let previousFingerprint = AccountPolicy.keyFingerprint(apiKey)
-        let newFingerprint = AccountPolicy.keyFingerprint(newKey)
-        let trimmed = newKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let previousKey = KeyStore.load()
+        let change = KeyChange.compare(previous: previousKey, next: newKey)
+        let trimmed = KeyChange.normalise(newKey)
         if trimmed.isEmpty {
             KeyStore.delete()
         } else if !KeyStore.save(trimmed) {
             return false
         }
-        return finishKeyTransition(previousFingerprint: previousFingerprint, newFingerprint: newFingerprint)
+        return applyKeyChange(change)
     }
 
     /// Removes the key and invalidates the account.
     @discardableResult
     func removeAPIKey() -> Bool {
-        let previousFingerprint = AccountPolicy.keyFingerprint(apiKey)
+        let previousKey = KeyStore.load()
         KeyStore.delete()
-        return finishKeyTransition(previousFingerprint: previousFingerprint, newFingerprint: nil)
+        return applyKeyChange(KeyChange.compare(previous: previousKey, next: nil))
     }
 
-    private func finishKeyTransition(previousFingerprint: Int?, newFingerprint: Int?) -> Bool {
-        guard AccountPolicy.clearsCache(previousKeyHash: previousFingerprint, newKeyHash: newFingerprint) else {
-            return false
-        }
+    private func applyKeyChange(_ change: KeyChange) -> Bool {
+        guard change.clearsCachedBalance else { return false }
         accountGeneration.invalidate()
-        cachedKeyFingerprint = newFingerprint
         cachedSnapshot = nil
         return true
     }
