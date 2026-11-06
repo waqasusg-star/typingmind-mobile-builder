@@ -5,10 +5,10 @@
   "app_name": "DeepSeek Pulse",
   "bundle_id": "com.waqas.deepseekpulse",
   "scheme": "DeepSeekPulse",
-  "version": "1.0.1",
-  "build_number": "2",
+  "version": "1.0.2",
+  "build_number": "3",
   "minimum_ios": "15.0",
-  "description": "DeepSeek Pulse 1.0.1: verified 2026-11-06 prices and schedule, verified PRC holiday calendar 2026-2027, weekend-always-off-peak model, multi-day countdown, 875-check foundation_policy suite and a source-only XcodeGen spec.",
+  "description": "DeepSeek Pulse 1.0.2 (build 3): adds widget-sized layouts (full, compact, Lock Screen, Live Activity card), a shared Foundation widget planner with executed checks, and a widget refresh/deep-link policy. Preserves bundle ID, Keychain key and saved data.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
