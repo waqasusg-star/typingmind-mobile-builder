@@ -46,16 +46,7 @@ enum PulseWidgetLocalStore {
 
         // No usable payload anywhere: publish the built-in schedule snapshot so the widget can
         // count down and show PEAK / OFF-PEAK immediately. No balance is fabricated.
-        let seeded = WidgetSnapshotPayload.make(writtenAt: date,
-                                                balanceFetchedAt: nil,
-                                                balance: nil,
-                                                schedule: RateSeeds.schedule,
-                                                models: RateSeeds.models.map { model in
-                                                    WidgetRate(name: WidgetCacheCodec.safe(model.name),
-                                                               label: WidgetCacheCodec.safe(model.label),
-                                                               offPeakDiscountPercent: model.clampedDiscount)
-                                                },
-                                                hasAPIKey: false)
+        let seeded = WidgetSnapshotPayload.builtIn(now: date)
         WidgetSnapshotStore.write(payload: seeded, to: .extensionLocal, location: location)
         return WidgetSnapshotStore.Loaded(envelope: WidgetCacheCodec.envelope(for: seeded, now: date),
                                           tier: .extensionLocal)
@@ -100,7 +91,7 @@ struct PulseEntry: TimelineEntry {
     var countdownLabel: String {
         guard let schedule = envelope.schedule, schedule.discountsEnabled else { return "" }
         guard let snapshot = snapshot, snapshot.nextSwitchAt != nil else { return "" }
-        return WidgetPlanner.switchCaption(snapshot: snapshot)
+        return WidgetPlanner.countdownCaption(snapshot: snapshot, discountsEnabled: schedule.discountsEnabled)
     }
 
     var footnote: String {

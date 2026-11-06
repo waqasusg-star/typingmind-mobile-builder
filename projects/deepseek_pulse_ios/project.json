@@ -8,7 +8,7 @@
   "version": "1.0.4",
   "build_number": "5",
   "minimum_ios": "15.0",
-  "description": "",
+  "description": "Widget countdown caption comes from the shared planner; extension seeds only schedule data.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
