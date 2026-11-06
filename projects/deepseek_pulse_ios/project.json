@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Timeline provider now uses the shared bounded planner so entries land on real pricing transitions, the cache-stale crossing and UTC midnight.",
+  "description": "Widget views use a native self-updating timer countdown, iOS 16 availability for accessory families, and iOS 17 containerBackground with an older-system fallback.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
