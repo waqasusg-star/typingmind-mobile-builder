@@ -42,6 +42,7 @@ final class PlayerViewController: UIViewController, AVPictureInPictureController
     private var loadToken = 0
     private var hideWork: DispatchWorkItem?
     private var streamCache: [String: (Stream, Date)] = [:]
+    private var audioSessionActive = false
 
     private var currentPosition: Double {
         let value = player.currentTime().seconds
@@ -90,19 +91,35 @@ final class PlayerViewController: UIViewController, AVPictureInPictureController
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         checkpoint()
+        // Dismissing the player is an explicit stop: write what the throttle deferred and hand the
+        // audio session back so other apps can resume.
+        Library.shared.flushPendingWrites()
         player.pause()
+        releaseAudioSessionIfIdle()
     }
 
     deinit {
         if let observer = timeObserver { player.removeTimeObserver(observer) }
         if let observer = endObserver { NotificationCenter.default.removeObserver(observer) }
         if let observer = failObserver { NotificationCenter.default.removeObserver(observer) }
+        releaseAudioSessionIfIdle()
     }
 
     private func configureAudio() {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .moviePlayback)
         try? session.setActive(true)
+        audioSessionActive = true
+    }
+
+    /// Releases the audio session only once playback has really stopped, so background audio,
+    /// picture in picture and automatic next-episode playback keep working.
+    private func releaseAudioSessionIfIdle() {
+        guard audioSessionActive else { return }
+        if pip?.isPictureInPictureActive == true { return }
+        if player.timeControlStatus == .playing { return }
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        audioSessionActive = false
     }
 
     private func buildVideo() {
@@ -344,7 +361,16 @@ final class PlayerViewController: UIViewController, AVPictureInPictureController
             return
         }
         desiredPlay.toggle()
-        if desiredPlay { player.play(); player.rate = speed } else { player.pause() }
+        if desiredPlay {
+            if !audioSessionActive { configureAudio() }
+            player.play()
+            player.rate = speed
+        } else {
+            player.pause()
+            // A deliberate pause is a checkpoint boundary: write the deferred position now.
+            checkpoint()
+            Library.shared.flushPendingWrites()
+        }
         chrome.feedback(desiredPlay ? "Playing" : "Paused")
         showControls(true)
         checkpoint()
@@ -355,6 +381,9 @@ final class PlayerViewController: UIViewController, AVPictureInPictureController
         checkpoint(completed: true)
         guard let current = series, let next = EpisodeOrder.next(index, current.episodes.count) else {
             desiredPlay = false
+            // The queue is finished: nothing else will play, so give the audio session back.
+            Library.shared.flushPendingWrites()
+            releaseAudioSessionIfIdle()
             chrome.showStatus("You've reached the final episode.")
             showControls(true)
             return
@@ -508,6 +537,7 @@ final class PlayerViewController: UIViewController, AVPictureInPictureController
         }
         scrubbing = false
         checkpoint()
+        Library.shared.flushPendingWrites()
     }
 
     // MARK: - Timeline
@@ -536,6 +566,7 @@ final class PlayerViewController: UIViewController, AVPictureInPictureController
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
         scrubbing = false
         checkpoint()
+        Library.shared.flushPendingWrites()
         scheduleHide()
     }
 
@@ -682,6 +713,7 @@ final class PlayerViewController: UIViewController, AVPictureInPictureController
 
     func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
         showControls(true)
+        releaseAudioSessionIfIdle()
     }
 
     func pictureInPictureController(_ controller: AVPictureInPictureController, restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
