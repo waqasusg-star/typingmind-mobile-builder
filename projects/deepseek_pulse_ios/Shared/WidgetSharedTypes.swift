@@ -14,6 +14,8 @@ enum WidgetShared {
     static let appGroupIdentifier = "group.com.waqas.deepseekpulse"
     /// File written by the app, read by the extension.
     static let cacheFileName = "widget-snapshot.json"
+    /// The extension's own copy, used when the App Group container is unavailable.
+    static let localCacheFileName = "pulse-widget-local.json"
     /// Current on-disk payload version. Bumping this makes older payloads unreadable by design.
     static let schemaVersion = 2
     /// Dates older than this are labelled as stale instead of being presented as current.
@@ -26,7 +28,7 @@ enum WidgetShared {
 enum WidgetDataState: String, Codable, Equatable {
     case fresh
     case stale
-    /// The App Group container is unavailable (entitlement missing on one or both targets).
+    /// No storage tier could be opened at all (entitlement missing AND the local tier unusable).
     case groupUnavailable
     case empty
     case incompatible
@@ -44,7 +46,7 @@ enum WidgetDataState: String, Codable, Equatable {
         case .stale:
             return "Showing the last balance the app saved. Open the app to refresh."
         case .groupUnavailable:
-            return "Widget data access is unavailable. Open the app, then reinstall this build with the App Group enabled for both bundles."
+            return "No saved snapshot yet. Open DeepSeek Pulse once; the widget saves its own copy from then on."
         case .empty:
             return "No data yet. Open DeepSeek Pulse once to save your balance and schedule."
         case .incompatible:
@@ -56,9 +58,9 @@ enum WidgetDataState: String, Codable, Equatable {
 
     var shortLabel: String {
         switch self {
-        case .fresh: return "RECENT"
+        case .fresh: return "UPDATED"
         case .stale: return "CACHED"
-        case .groupUnavailable: return "SETUP"
+        case .groupUnavailable: return "FIRST RUN"
         case .empty: return "NO DATA"
         case .incompatible: return "UPDATE"
         case .corrupt: return "UNREADABLE"
@@ -97,6 +99,24 @@ struct WidgetSnapshotPayload: Codable, Equatable {
     var schedule: PricingSchedule
     var models: [WidgetRate]
     var hasAPIKey: Bool
+
+    /// Builds a payload from raw pieces without touching the file system, so the same construction
+    /// is reused by the app bridge and by widget-only fallback states. Never carries key material.
+    static func make(schemaVersion: Int = WidgetShared.schemaVersion,
+                     writtenAt: Date,
+                     balanceFetchedAt: Date?,
+                     balance: WidgetBalance?,
+                     schedule: PricingSchedule,
+                     models: [WidgetRate],
+                     hasAPIKey: Bool) -> WidgetSnapshotPayload {
+        WidgetSnapshotPayload(schemaVersion: schemaVersion,
+                              writtenAt: writtenAt,
+                              balanceFetchedAt: balanceFetchedAt,
+                              balance: balance,
+                              schedule: schedule,
+                              models: models,
+                              hasAPIKey: hasAPIKey)
+    }
 }
 
 /// Decoded result handed to the timeline provider and the views.
