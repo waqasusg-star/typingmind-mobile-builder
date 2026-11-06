@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Add Shared/WidgetPolicyCore.swift with the full bounded planner and retire the old Shared/WidgetPolicy.swift basename.",
+  "description": "Neutralise the leftover Shared/WidgetPlanner.swift and both retired markers so only WidgetPlannerCore/WidgetPolicyCore declare those types.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
