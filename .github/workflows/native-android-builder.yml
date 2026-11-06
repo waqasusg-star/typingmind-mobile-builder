@@ -27,6 +27,7 @@ jobs:
       - uses: actions/setup-java@v4
         with: {distribution: temurin, java-version: '17'}
       - uses: android-actions/setup-android@v3
+        with: {packages: platform-tools}
       - uses: gradle/actions/setup-gradle@v4
         with: {gradle-version: '8.11.1', cache-read-only: true}
       - name: Install fixed SDK tools
@@ -51,6 +52,7 @@ jobs:
       - uses: actions/checkout@v4
         with: {ref: '${{ inputs.source_sha }}', persist-credentials: false}
       - uses: android-actions/setup-android@v3
+        with: {packages: platform-tools}
       - run: sdkmanager 'build-tools;35.0.0'
       - uses: actions/download-artifact@v4
         with:
