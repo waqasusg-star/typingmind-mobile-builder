@@ -105,6 +105,9 @@ final class SettingsStore {
     }
 
     /// Removes the key and reports exactly what happened.
+    ///
+    /// A delete that succeeds, or reports item-not-found, always invalidates pending requests and
+    /// clears the cached balance, because an old cache can exist even when the key is already gone.
     func removeAPIKey() -> KeyRemovalResult {
         let previousKey = KeyStore.load()
         guard KeyStore.delete() else {
