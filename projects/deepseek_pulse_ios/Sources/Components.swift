@@ -86,6 +86,7 @@ struct WidgetContent {
     var stateText = "STANDARD"
     var stateColor = AppColors.textDim
     var detailLine = ""
+    var noteLine = ""
     var clockLine = ""
     var updatedLine = ""
 }
@@ -100,6 +101,7 @@ final class WidgetCardView: UIView {
     private let grantedBox = StatBoxView(title: "Granted")
     private let toppedBox = StatBoxView(title: "Topped up")
     private let detailLabel = UILabel()
+    private let noteLabel = UILabel()
     private let clockLabel = UILabel()
     private let updatedLabel = UILabel()
 
@@ -139,6 +141,10 @@ final class WidgetCardView: UIView {
         detailLabel.textColor = UIColor.white.withAlphaComponent(0.94)
         detailLabel.numberOfLines = 0
 
+        noteLabel.font = Typography.scaled(11, .medium, style: .caption1)
+        noteLabel.textColor = UIColor(hex: 0xFFC46B)
+        noteLabel.numberOfLines = 0
+
         clockLabel.font = Typography.scaled(11, .medium, style: .caption1)
         clockLabel.textColor = UIColor.white.withAlphaComponent(0.68)
         clockLabel.numberOfLines = 0
@@ -161,7 +167,7 @@ final class WidgetCardView: UIView {
         separator.backgroundColor = UIColor.white.withAlphaComponent(0.16)
         separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
 
-        let stack = UIStackView(arrangedSubviews: [topRow, totalLabel, availabilityLabel, statsRow, separator, detailLabel, clockLabel, updatedLabel])
+        let stack = UIStackView(arrangedSubviews: [topRow, totalLabel, availabilityLabel, statsRow, separator, detailLabel, noteLabel, clockLabel, updatedLabel])
         stack.axis = .vertical
         stack.spacing = 10
         stack.setCustomSpacing(2, after: totalLabel)
@@ -169,6 +175,7 @@ final class WidgetCardView: UIView {
         stack.setCustomSpacing(14, after: statsRow)
         stack.setCustomSpacing(12, after: separator)
         stack.setCustomSpacing(4, after: detailLabel)
+        stack.setCustomSpacing(4, after: noteLabel)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
 
@@ -193,6 +200,8 @@ final class WidgetCardView: UIView {
         grantedBox.value = content.granted
         toppedBox.value = content.toppedUp
         detailLabel.text = content.detailLine
+        noteLabel.text = content.noteLine
+        noteLabel.isHidden = content.noteLine.isEmpty
         clockLabel.text = content.clockLine
         updatedLabel.text = content.updatedLine
     }
@@ -243,7 +252,7 @@ final class StatBoxView: UIView {
 
 final class DayTimelineView: UIView {
 
-    var window: PeakWindow = .seeded {
+    var segments: [ScheduleSegment] = [] {
         didSet { setNeedsDisplay() }
     }
 
@@ -263,6 +272,14 @@ final class DayTimelineView: UIView {
         CGSize(width: UIView.noIntrinsicMetric, height: 78)
     }
 
+    static func color(for state: PricingState) -> UIColor {
+        switch state {
+        case .peak: return AppColors.peak
+        case .offPeak: return AppColors.offPeak
+        case .standard: return AppColors.textDim
+        }
+    }
+
     override func draw(_ rect: CGRect) {
         let barHeight: CGFloat = 16
         let barRect = CGRect(x: 0, y: 6, width: rect.width, height: barHeight)
@@ -273,18 +290,23 @@ final class DayTimelineView: UIView {
         if let context = UIGraphicsGetCurrentContext() {
             context.saveGState()
             barPath.addClip()
-            for segment in window.segments() {
-                let x = barRect.minX + barRect.width * CGFloat(segment.startMinute) / CGFloat(PeakWindow.minutesPerDay)
-                let width = barRect.width * CGFloat(segment.endMinute - segment.startMinute) / CGFloat(PeakWindow.minutesPerDay)
-                let color = segment.isOffPeak ? AppColors.offPeak : AppColors.peak
-                color.withAlphaComponent(segment.isOffPeak ? 0.9 : 0.5).setFill()
+            for segment in segments {
+                let x = barRect.minX + barRect.width * CGFloat(segment.startMinute) / CGFloat(PricingSchedule.minutesPerDay)
+                let width = barRect.width * CGFloat(segment.endMinute - segment.startMinute) / CGFloat(PricingSchedule.minutesPerDay)
+                let alpha: CGFloat
+                switch segment.state {
+                case .peak: alpha = 0.75
+                case .offPeak: alpha = 0.9
+                case .standard: alpha = 0.45
+                }
+                DayTimelineView.color(for: segment.state).withAlphaComponent(alpha).setFill()
                 context.fill(CGRect(x: x, y: barRect.minY, width: width, height: barRect.height))
             }
             context.restoreGState()
         }
 
-        let clamped = max(0, min(nowSeconds, PeakWindow.secondsPerDay - 1))
-        let markerX = barRect.minX + barRect.width * CGFloat(clamped) / CGFloat(PeakWindow.secondsPerDay)
+        let clamped = max(0, min(nowSeconds, PricingSchedule.secondsPerDay - 1))
+        let markerX = barRect.minX + barRect.width * CGFloat(clamped) / CGFloat(PricingSchedule.secondsPerDay)
         let marker = UIBezierPath(ovalIn: CGRect(x: markerX - 5, y: barRect.midY - 5, width: 10, height: 10))
         UIColor.white.setFill()
         marker.fill()
@@ -347,9 +369,10 @@ final class RateTableView: UIView {
                 stack.addArrangedSubview(divider)
             }
             let nameLabel = UILabel()
-            nameLabel.text = model.name
+            nameLabel.text = model.displayName
             nameLabel.font = Typography.scaled(13.5, .bold, style: .subheadline)
             nameLabel.textColor = AppColors.accentSoft
+            nameLabel.numberOfLines = 0
             stack.addArrangedSubview(nameLabel)
 
             for component in RateComponent.allCases {

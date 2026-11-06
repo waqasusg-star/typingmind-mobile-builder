@@ -1,31 +1,170 @@
 import Foundation
 
-// MARK: - Peak / off-peak schedule
+// MARK: - Pricing state
 
-/// One contiguous band of the 24 hour UTC day.
+enum PricingState: String, Equatable {
+    case peak
+    case offPeak
+    case standard
+
+    var label: String {
+        switch self {
+        case .peak: return "PEAK"
+        case .offPeak: return "OFF-PEAK"
+        case .standard: return "STANDARD"
+        }
+    }
+}
+
+// MARK: - Schedule model
+
+/// One peak window inside a single UTC day. `endMinuteUTC` is exclusive.
+struct PeakInterval: Codable, Equatable, Hashable {
+    var startMinuteUTC: Int
+    var endMinuteUTC: Int
+
+    var isValid: Bool {
+        startMinuteUTC >= 0
+            && endMinuteUTC <= PricingSchedule.minutesPerDay
+            && startMinuteUTC < endMinuteUTC
+    }
+
+    var durationMinutes: Int { max(0, endMinuteUTC - startMinuteUTC) }
+
+    func contains(minute: Int) -> Bool {
+        minute >= startMinuteUTC && minute < endMinuteUTC
+    }
+
+    var utcLabel: String {
+        "\(ClockFormat.minuteLabel(startMinuteUTC))–\(ClockFormat.minuteLabel(endMinuteUTC))"
+    }
+}
+
+/// How a single UTC day relates to the PRC public holiday calendar.
+enum DayKind: String, Codable, Equatable {
+    /// Explicitly listed as a PRC public holiday.
+    case holiday
+    /// Inside the date range the user marked as checked, and not a holiday.
+    case workingDay
+    /// No verified holiday information for this day; weekday peaks are assumed.
+    case unverified
+}
+
+struct HolidayCalendar: Codable, Equatable {
+    /// PRC calendar dates (yyyy-MM-dd). Peak windows fall inside 09:00–18:00 CST,
+    /// so the PRC date and the UTC date of a peak window carry the same yyyy-MM-dd.
+    var dates: Set<String>
+    /// First and last yyyy-MM-dd the user actually checked against the official notice.
+    var coverageStart: String?
+    var coverageEnd: String?
+    /// When the human confirmed the list, in the device's words. Never set automatically.
+    var verifiedAsOf: String?
+
+    static let empty = HolidayCalendar(dates: [], coverageStart: nil, coverageEnd: nil, verifiedAsOf: nil)
+
+    var isVerified: Bool {
+        guard let start = coverageStart, let end = coverageEnd else { return false }
+        return !dates.isEmpty && start <= end
+    }
+
+    /// ISO date strings compare lexicographically, which is chronological for yyyy-MM-dd.
+    func covers(_ dayKey: String) -> Bool {
+        guard let start = coverageStart, let end = coverageEnd else { return false }
+        return dayKey >= start && dayKey <= end
+    }
+
+    func kind(forDay dayKey: String) -> DayKind {
+        if dates.contains(dayKey) { return .holiday }
+        if covers(dayKey) { return .workingDay }
+        return .unverified
+    }
+
+    var summary: String {
+        if dates.isEmpty && coverageStart == nil {
+            return "PRC public holidays not loaded"
+        }
+        let range: String
+        if let start = coverageStart, let end = coverageEnd {
+            range = " \(start)…\(end)"
+        } else {
+            range = " (no verified range)"
+        }
+        let stamp = verifiedAsOf.map { " · marked \($0)" } ?? " · unverified"
+        return "\(dates.count) PRC holiday date(s)\(range)\(stamp)"
+    }
+}
+
+/// The resolved peak/off-peak shape of one UTC day.
+struct DaySchedule: Equatable {
+    var key: String
+    var weekday: Int
+    var kind: DayKind
+    var intervals: [PeakInterval]
+
+    var isPeakDay: Bool { !intervals.isEmpty }
+}
+
+/// One band of the 24 hour UTC day, used by the timeline bar.
 struct ScheduleSegment: Equatable {
     var startMinute: Int
     var endMinute: Int
-    var isOffPeak: Bool
+    var state: PricingState
 }
 
-/// The documented DeepSeek off-peak discount window, expressed in UTC minutes.
-/// Minutes are counted from 00:00 UTC, `endMinuteUTC` is exclusive.
-struct PeakWindow: Codable, Equatable {
-    var startMinuteUTC: Int
-    var endMinuteUTC: Int
-    var discountEnabled: Bool
+/// The published DeepSeek price schedule: a set of UTC weekday peak windows plus
+/// a PRC public holiday calendar. Off-peak covers every other hour, all weekends
+/// and every PRC public holiday.
+struct PricingSchedule: Codable, Equatable {
+
+    /// ISO weekdays with peak windows: 1 = Monday … 7 = Sunday.
+    var peakWeekdays: Set<Int>
+    /// Peak windows in UTC minutes from 00:00, applied on `peakWeekdays`.
+    var intervals: [PeakInterval]
+    var holidays: HolidayCalendar
+    /// false means "discounts withdrawn": one standard price around the clock.
+    var discountsEnabled: Bool
+    var sourceURL: String
+    var verifiedAsOf: String
 
     static let minutesPerDay = 1440
     static let secondsPerDay = 86400
 
-    /// 16:30 UTC to 00:30 UTC, the published off-peak discount window.
-    static let seeded = PeakWindow(startMinuteUTC: 16 * 60 + 30, endMinuteUTC: 30, discountEnabled: true)
-
-    static var utcCalendar: Calendar {
+    static let utcCalendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? TimeZone(identifier: "UTC")!
         return calendar
+    }()
+
+    // MARK: UTC helpers
+
+    static func dayKey(_ date: Date) -> String {
+        let parts = utcCalendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
+
+    static func date(fromDayKey key: String) -> Date? {
+        let parts = key.split(separator: "-")
+        guard parts.count == 3,
+              let year = Int(parts[0]),
+              let month = Int(parts[1]),
+              let day = Int(parts[2]) else { return nil }
+        return utcCalendar.date(from: DateComponents(year: year, month: month, day: day))
+    }
+
+    static func startOfDayUTC(_ date: Date) -> Date {
+        utcCalendar.startOfDay(for: date)
+    }
+
+    /// ISO weekday: 1 = Monday … 7 = Sunday.
+    static func isoWeekday(_ date: Date) -> Int {
+        let weekday = utcCalendar.component(.weekday, from: date)
+        return weekday == 1 ? 7 : weekday - 1
+    }
+
+    static func weekdayShort(_ iso: Int) -> String {
+        let names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        guard iso >= 1, iso <= names.count else { return "?" }
+        return names[iso - 1]
     }
 
     static func minuteOfDayUTC(_ date: Date) -> Int {
@@ -38,72 +177,134 @@ struct PeakWindow: Codable, Equatable {
         return (parts.hour ?? 0) * 3600 + (parts.minute ?? 0) * 60 + (parts.second ?? 0)
     }
 
-    static func isValid(minute: Int) -> Bool {
-        minute >= 0 && minute < minutesPerDay
+    // MARK: Shape
+
+    var intervalsAreValid: Bool {
+        !peakWeekdays.isEmpty && !intervals.isEmpty && intervals.allSatisfy { $0.isValid }
     }
 
-    /// A schedule is only usable when it is switched on and both edges are real times of day.
-    var isActive: Bool {
-        discountEnabled
-            && startMinuteUTC != endMinuteUTC
-            && PeakWindow.isValid(minute: startMinuteUTC)
-            && PeakWindow.isValid(minute: endMinuteUTC)
+    var isActive: Bool { discountsEnabled && intervalsAreValid }
+
+    var sortedIntervals: [PeakInterval] {
+        intervals.sorted { $0.startMinuteUTC < $1.startMinuteUTC }
     }
 
-    var wrapsMidnight: Bool { startMinuteUTC > endMinuteUTC }
+    var weekdaySummary: String {
+        let sorted = peakWeekdays.sorted()
+        if sorted == [1, 2, 3, 4, 5] { return "Mon–Fri" }
+        if sorted == [1, 2, 3, 4, 5, 6, 7] { return "every day" }
+        if sorted.isEmpty { return "no days" }
+        return sorted.map { PricingSchedule.weekdayShort($0) }.joined(separator: " ")
+    }
 
-    func isOffPeak(at date: Date) -> Bool {
-        guard isActive else { return false }
-        let minute = PeakWindow.minuteOfDayUTC(date)
-        if wrapsMidnight {
-            return minute >= startMinuteUTC || minute < endMinuteUTC
+    var intervalSummaryUTC: String {
+        sortedIntervals.map { $0.utcLabel }.joined(separator: ", ") + " UTC"
+    }
+
+    func intervalSummaryLocal(on reference: Date = Date(), timeZone: TimeZone = .current) -> String {
+        let parts = sortedIntervals.map { interval in
+            ClockFormat.localLabel(minuteUTC: interval.startMinuteUTC, on: reference, timeZone: timeZone)
+                + "–"
+                + ClockFormat.localLabel(minuteUTC: interval.endMinuteUTC, on: reference, timeZone: timeZone)
         }
-        return minute >= startMinuteUTC && minute < endMinuteUTC
+        return parts.joined(separator: ", ")
     }
 
-    func stateLabel(at date: Date) -> String {
-        guard isActive else { return "STANDARD" }
-        return isOffPeak(at: date) ? "OFF-PEAK" : "PEAK"
+    // MARK: Queries
+
+    func daySchedule(for date: Date) -> DaySchedule {
+        let key = PricingSchedule.dayKey(date)
+        let weekday = PricingSchedule.isoWeekday(date)
+        let kind = holidays.kind(forDay: key)
+        let peakDay = isActive && peakWeekdays.contains(weekday) && kind != .holiday
+        return DaySchedule(key: key,
+                           weekday: weekday,
+                           kind: kind,
+                           intervals: peakDay ? sortedIntervals : [])
     }
 
-    /// The next moment the peak/off-peak state flips, strictly in the future.
-    func nextTransition(after date: Date) -> (date: Date, becomesOffPeak: Bool)? {
+    func isPeak(at date: Date) -> Bool {
+        let day = daySchedule(for: date)
+        guard !day.intervals.isEmpty else { return false }
+        let minute = PricingSchedule.minuteOfDayUTC(date)
+        return day.intervals.contains { $0.contains(minute: minute) }
+    }
+
+    func state(at date: Date) -> PricingState {
+        guard discountsEnabled else { return .standard }
+        return isPeak(at: date) ? .peak : .offPeak
+    }
+
+    /// True when today's answer depends on a holiday that is not on file.
+    func isUncertain(at date: Date) -> Bool {
+        guard discountsEnabled, intervalsAreValid else { return false }
+        let day = daySchedule(for: date)
+        return day.kind == .unverified && peakWeekdays.contains(day.weekday)
+    }
+
+    struct Transition: Equatable {
+        var date: Date
+        var becomesPeak: Bool
+        var dayKind: DayKind
+        var daysAhead: Int
+        /// The target day is a weekday whose holiday status is not on file.
+        var uncertain: Bool
+    }
+
+    /// Next moment the peak/off-peak state flips, searching across days, weekends and holidays.
+    func nextTransition(after date: Date, horizonDays: Int = 400) -> Transition? {
         guard isActive else { return nil }
-        let nowSeconds = PeakWindow.secondsOfDayUTC(date)
-        var bestSeconds = Int.max
-        var best: (date: Date, becomesOffPeak: Bool)?
-        for (minute, becomesOffPeak) in [(startMinuteUTC, true), (endMinuteUTC, false)] {
-            var delta = minute * 60 - nowSeconds
-            if delta <= 0 { delta += PeakWindow.secondsPerDay }
-            if delta < bestSeconds {
-                bestSeconds = delta
-                best = (date.addingTimeInterval(Double(delta)), becomesOffPeak)
+        let todayStart = PricingSchedule.startOfDayUTC(date)
+        for offset in 0...max(1, horizonDays) {
+            guard let dayStart = PricingSchedule.utcCalendar.date(byAdding: .day, value: offset, to: todayStart) else { continue }
+            let day = daySchedule(for: dayStart)
+            for interval in day.intervals {
+                for (minute, becomesPeak) in [(interval.startMinuteUTC, true), (interval.endMinuteUTC, false)] {
+                    let candidate = dayStart.addingTimeInterval(Double(minute * 60))
+                    if candidate > date {
+                        return Transition(date: candidate,
+                                          becomesPeak: becomesPeak,
+                                          dayKind: day.kind,
+                                          daysAhead: offset,
+                                          uncertain: day.kind == .unverified)
+                    }
+                }
             }
         }
-        return best
+        return nil
     }
 
-    /// Bands covering the whole day, used by the timeline bar.
-    func segments() -> [ScheduleSegment] {
-        guard isActive else {
-            return [ScheduleSegment(startMinute: 0, endMinute: PeakWindow.minutesPerDay, isOffPeak: false)]
+    func segments(for date: Date) -> [ScheduleSegment] {
+        guard discountsEnabled else {
+            return [ScheduleSegment(startMinute: 0, endMinute: PricingSchedule.minutesPerDay, state: .standard)]
         }
-        if wrapsMidnight {
-            return [
-                ScheduleSegment(startMinute: 0, endMinute: endMinuteUTC, isOffPeak: true),
-                ScheduleSegment(startMinute: endMinuteUTC, endMinute: startMinuteUTC, isOffPeak: false),
-                ScheduleSegment(startMinute: startMinuteUTC, endMinute: PeakWindow.minutesPerDay, isOffPeak: true)
-            ]
+        let day = daySchedule(for: date)
+        guard !day.intervals.isEmpty else {
+            return [ScheduleSegment(startMinute: 0, endMinute: PricingSchedule.minutesPerDay, state: .offPeak)]
         }
-        return [
-            ScheduleSegment(startMinute: 0, endMinute: startMinuteUTC, isOffPeak: false),
-            ScheduleSegment(startMinute: startMinuteUTC, endMinute: endMinuteUTC, isOffPeak: true),
-            ScheduleSegment(startMinute: endMinuteUTC, endMinute: PeakWindow.minutesPerDay, isOffPeak: false)
-        ]
+        var result: [ScheduleSegment] = []
+        var cursor = 0
+        for interval in day.intervals {
+            if interval.startMinuteUTC > cursor {
+                result.append(ScheduleSegment(startMinute: cursor, endMinute: interval.startMinuteUTC, state: .offPeak))
+            }
+            result.append(ScheduleSegment(startMinute: interval.startMinuteUTC, endMinute: interval.endMinuteUTC, state: .peak))
+            cursor = interval.endMinuteUTC
+        }
+        if cursor < PricingSchedule.minutesPerDay {
+            result.append(ScheduleSegment(startMinute: cursor, endMinute: PricingSchedule.minutesPerDay, state: .offPeak))
+        }
+        return result
     }
 
-    func offPeakDurationMinutes() -> Int {
-        segments().reduce(0) { $0 + ($1.isOffPeak ? $1.endMinute - $1.startMinute : 0) }
+    func outlook(from date: Date, days: Int = 7) -> [DaySchedule] {
+        let start = PricingSchedule.startOfDayUTC(date)
+        var result: [DaySchedule] = []
+        for offset in 0..<max(0, days) {
+            guard let day = PricingSchedule.utcCalendar.date(byAdding: .day, value: offset, to: start) else { continue }
+            result.append(daySchedule(for: day))
+        }
+        return result
     }
 }
 
@@ -112,25 +313,26 @@ struct PeakWindow: Codable, Equatable {
 enum ClockFormat {
     static func countdown(seconds: Int) -> String {
         let total = max(0, seconds)
-        let hours = total / 3600
+        let days = total / 86400
+        let hours = (total % 86400) / 3600
         let minutes = (total % 3600) / 60
         let remaining = total % 60
+        if days > 0 { return "\(days)d \(hours)h \(minutes)m" }
         if hours > 0 { return "\(hours)h \(minutes)m" }
         if minutes > 0 { return "\(minutes)m " + String(format: "%02d", remaining) + "s" }
         return "\(remaining)s"
     }
 
     static func minuteLabel(_ minute: Int) -> String {
-        let clamped = max(0, min(minute, PeakWindow.minutesPerDay))
+        let clamped = max(0, min(minute, PricingSchedule.minutesPerDay))
         return String(format: "%02d:%02d", clamped / 60, clamped % 60)
     }
 
     /// Converts a minute-of-day in UTC into the viewer's local wall clock time.
     static func localLabel(minuteUTC: Int, on reference: Date = Date(), timeZone: TimeZone = .current) -> String {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? TimeZone(identifier: "UTC")!
-        let start = calendar.startOfDay(for: reference)
-        guard let shifted = calendar.date(byAdding: .minute, value: max(0, min(minuteUTC, PeakWindow.minutesPerDay)), to: start) else {
+        let start = PricingSchedule.startOfDayUTC(reference)
+        let clamped = max(0, min(minuteUTC, PricingSchedule.minutesPerDay))
+        guard let shifted = PricingSchedule.utcCalendar.date(byAdding: .minute, value: clamped, to: start) else {
             return "--:--"
         }
         let formatter = DateFormatter()
@@ -138,6 +340,30 @@ enum ClockFormat {
         formatter.timeZone = timeZone
         formatter.dateFormat = "HH:mm"
         return formatter.string(from: shifted)
+    }
+
+    static func utcStamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "EEE d MMM HH:mm"
+        return formatter.string(from: date) + " UTC"
+    }
+
+    static func localStamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "EEE d MMM HH:mm"
+        return formatter.string(from: date)
+    }
+
+    static func utcDayLabel(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "EEE d MMM"
+        return formatter.string(from: date)
     }
 
     static func utcTimeLabel(_ date: Date) -> String {
@@ -248,6 +474,8 @@ enum RateComponent: String, CaseIterable {
 struct ModelRate: Codable, Equatable {
     var id: String
     var name: String
+    /// Published model build label, for example V4.1-Flash-1017.
+    var label: String
     var standard: TokenRates
     var offPeakDiscountPercent: Double
 
@@ -260,24 +488,47 @@ struct ModelRate: Codable, Equatable {
     func rates(offPeakActive: Bool) -> TokenRates {
         offPeakActive ? offPeak : standard
     }
+
+    var displayName: String {
+        label.isEmpty ? name : "\(name) · \(label)"
+    }
 }
 
 enum RateSeeds {
-    /// USD per 1M tokens, taken from DeepSeek's published standard (peak) schedule together with
-    /// the 50% / 75% off-peak discounts. Local editable defaults only: confirm on
-    /// https://api-docs.deepseek.com/quick_start/pricing and correct them in Settings → Rates.
+
+    /// Human-verified against the official pricing page on this date. The app never downloads prices.
+    static let verifiedAsOf = "2026-11-06"
+    static let sourceURL = "https://api-docs.deepseek.com/quick_start/pricing/"
+
+    /// USD per 1M tokens. Published standard (peak) prices; the published off-peak
+    /// prices are exactly 50% of these for both models.
     static let models: [ModelRate] = [
-        ModelRate(id: "deepseek-chat",
-                  name: "deepseek-chat",
-                  standard: TokenRates(cacheHit: 0.07, cacheMiss: 0.27, output: 1.10),
+        ModelRate(id: "deepseek-flash",
+                  name: "deepseek-flash",
+                  label: "V4.1-Flash-1017",
+                  standard: TokenRates(cacheHit: 0.006, cacheMiss: 0.30, output: 1.20),
                   offPeakDiscountPercent: 50),
-        ModelRate(id: "deepseek-reasoner",
-                  name: "deepseek-reasoner",
-                  standard: TokenRates(cacheHit: 0.14, cacheMiss: 0.55, output: 2.19),
-                  offPeakDiscountPercent: 75)
+        ModelRate(id: "deepseek-v4-pro",
+                  name: "deepseek-v4-pro",
+                  label: "V4-Pro-0813",
+                  standard: TokenRates(cacheHit: 0.044, cacheMiss: 1.32, output: 3.96),
+                  offPeakDiscountPercent: 50)
     ]
 
-    static let sourceNote = "Seeded defaults — verify on api-docs.deepseek.com/quick_start/pricing"
+    /// Peak = Monday–Friday 01:00–04:00 and 06:00–10:00 UTC, excluding PRC public holidays.
+    /// The official holiday list is not bundled; `holidays` starts empty and therefore unverified.
+    static let schedule: PricingSchedule = PricingSchedule(
+        peakWeekdays: [1, 2, 3, 4, 5],
+        intervals: [
+            PeakInterval(startMinuteUTC: 60, endMinuteUTC: 240),
+            PeakInterval(startMinuteUTC: 360, endMinuteUTC: 600)
+        ],
+        holidays: .empty,
+        discountsEnabled: true,
+        sourceURL: sourceURL,
+        verifiedAsOf: verifiedAsOf)
+
+    static let sourceNote = "Official schedule and prices verified \(verifiedAsOf) · \(sourceURL)"
 }
 
 // MARK: - Account balance
