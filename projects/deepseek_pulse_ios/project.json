@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Rename the two comment-only Sources stubs to unique basenames so Swift no longer sees a duplicate WidgetPlanner.swift filename in the app target.",
+  "description": "Add uniquely named marker files replacing the colliding Sources stubs.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
