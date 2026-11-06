@@ -7,3 +7,4 @@
 - Dark/light appearance control persisted across launches.
 - Corrupt-data recovery copy with in-app restore.
 - `foundation_policy` test suite executing real Foundation logic checks in CI.
+- Stored titles are validated but no longer re-normalized on load, so saved data round-trips exactly.

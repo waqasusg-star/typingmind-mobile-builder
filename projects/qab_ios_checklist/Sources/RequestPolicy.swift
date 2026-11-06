@@ -241,11 +241,12 @@ enum ChecklistPolicy {
                 continue
             }
             var item = decoded
-            guard let title = validateTitle(item.title).normalizedTitle else {
+            let trimmedTitle = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedTitle.isEmpty, trimmedTitle.count <= maxTitleLength else {
                 skipped += 1
                 continue
             }
-            item.title = title
+            item.title = trimmedTitle
             items.append(item)
         }
         return ChecklistDecode(items: items, skippedLines: skipped, formatOk: true)
