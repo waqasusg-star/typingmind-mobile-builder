@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Settings honours the explicit key store/removal result instead of inferring success from a re-read.",
+  "description": "Tests cover all four transitions in a trading day, reloadDate bounds, explicit key save/removal results, and the existing stale and account rules.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

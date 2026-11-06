@@ -166,22 +166,32 @@ func widgetKitChecks() throws {
     try expect(plan.count <= WidgetTimelinePlanner.maximumEntries, "the plan respects the entry cap")
     try expect(plan == plan.sorted(by: { $0.date < $1.date }), "boundaries are ordered")
 
-    let switchMarks = plan.filter { $0.reason == .peakSwitch }
-    try expect(switchMarks.count == 1, "only the nearest transition is planned, not eight")
-    if let first = switchMarks.first {
-        try expect(first.date == utc("2026-11-10T01:00:00"), "the planned transition is the real 01:00 UTC peak start")
-    }
+    // A trading day has FOUR transitions. Planning only the first left the widget showing PEAK
+    // after 04:00, because a later midnight entry does not ask iOS for a reload.
+    let switchDates = plan.filter { $0.reason == .peakSwitch }.map { $0.date }
+    try expect(switchDates.count == 4, "all four transitions of the trading day are planned")
+    try expect(switchDates.contains(utc("2026-11-10T01:00:00")), "01:00 UTC peak start planned")
+    try expect(switchDates.contains(utc("2026-11-10T04:00:00")), "04:00 UTC peak end planned")
+    try expect(switchDates.contains(utc("2026-11-10T06:00:00")), "06:00 UTC peak start planned")
+    try expect(switchDates.contains(utc("2026-11-10T10:00:00")), "10:00 UTC peak end planned")
+
+    // Each planned instant reports the state that actually begins there.
+    func state(after date: Date) -> PricingState { schedule.state(at: date.addingTimeInterval(60)) }
+    func state(before date: Date) -> PricingState { schedule.state(at: date.addingTimeInterval(-60)) }
+    try expect(state(before: utc("2026-11-10T01:00:00")) == .offPeak, "off-peak before 01:00")
+    try expect(state(after: utc("2026-11-10T01:00:00")) == .peak, "peak after 01:00")
+    try expect(state(after: utc("2026-11-10T04:00:00")) == .offPeak, "off-peak after 04:00")
+    try expect(state(after: utc("2026-11-10T06:00:00")) == .peak, "peak after 06:00")
+    try expect(state(after: utc("2026-11-10T10:00:00")) == .offPeak, "off-peak after 10:00")
+
+    // The reload request is bounded by the policy maximum, and it is a request, not a promise.
+    let reload = WidgetTimelinePlanner.reloadDate(now: planStart)
+    try expect(reload <= planStart.addingTimeInterval(WidgetPolicy.maximumRefreshInterval), "reloadDate is within the policy maximum")
+    try expect(reload > planStart, "reloadDate is in the future")
 
     // Horizon bound: nothing may sit further away than one day.
     let horizonLimit = planStart.addingTimeInterval(WidgetTimelinePlanner.horizon)
     try expect(plan.allSatisfy { $0.date <= horizonLimit }, "no entry is beyond the planning horizon")
-
-    // Bounded reload request, consistent with maximumRefreshInterval.
-    let reloadBounds = plan.filter { $0.reason == .reloadBound }
-    try expect(!reloadBounds.isEmpty, "a bounded reload entry is always present")
-    if let bound = reloadBounds.first {
-        try expect(bound.date <= planStart.addingTimeInterval(WidgetPolicy.maximumRefreshInterval), "the reload bound is within the policy maximum")
-    }
 
     // MARK: Integration — the planned cache-stale entry really decodes as stale
 
