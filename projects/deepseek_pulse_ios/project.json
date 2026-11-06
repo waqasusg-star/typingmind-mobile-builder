@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Widget tests: real stale-crossing integration check through encode and decode, bounded plan, holiday and no-cache behaviour, account generation without fingerprints.",
+  "description": "Restore the detailed 1.0.2 and 1.0.1 history from the baseline and prepend the completed 1.0.3 widget work.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
