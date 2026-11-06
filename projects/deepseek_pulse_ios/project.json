@@ -8,7 +8,7 @@
   "version": "1.0.2",
   "build_number": "3",
   "minimum_ios": "15.0",
-  "description": "DeepSeek Pulse 1.0.2 (build 3): widget-sized layouts plus a Widget Studio preview screen and a settings menu entry.",
+  "description": "DeepSeek Pulse 1.0.2 (build 3): widget-sized layouts for Home Screen, Lock Screen and Live Activity.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
