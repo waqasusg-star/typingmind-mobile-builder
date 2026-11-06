@@ -100,6 +100,12 @@ enum WidgetPlanner {
         value.nextSwitchBecomesPeak ? "Peak starts" : "Off-peak starts"
     }
 
+    /// Short caption placed directly above the live countdown, for example "Off-peak in".
+    static func countdownCaption(snapshot value: Snapshot, discountsEnabled: Bool) -> String {
+        guard discountsEnabled, value.nextSwitchAt != nil else { return "" }
+        return value.nextSwitchBecomesPeak ? "Peak in" : "Off-peak in"
+    }
+
     static func footnote(snapshot value: Snapshot, discountsEnabled: Bool, timeZone: TimeZone = .current) -> String {
         guard discountsEnabled else { return "Off-peak discounts are off" }
         guard value.nextSwitchAt != nil else { return "No peak window configured" }
