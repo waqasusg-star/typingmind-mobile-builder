@@ -32,6 +32,11 @@ saved schedule, prices and cached balance all carry over unchanged.
 
 ## Fixes in this build (found by inspecting real CI output)
 
+- **Missing `import Foundation` in the shared planner.** After the de-duplication above,
+  `Shared/WidgetPlannerCore.swift` no longer began with an import, so `Date`, `TimeZone`,
+  `DateFormatter` and `Locale` were unknown and `Snapshot` could not synthesize `Equatable`. The
+  import is restored. All five `Shared/` files now start with `import Foundation`.
+
 - **Duplicate Swift basenames broke the app archive.** Two files named `WidgetPlanner.swift` (in
   `Sources/` and `Shared/`) — and likewise `WidgetPolicy.swift` — existed in both the app target and
   the widget extension target. Swift rejects that with `Filename "WidgetPlanner.swift" used twice`

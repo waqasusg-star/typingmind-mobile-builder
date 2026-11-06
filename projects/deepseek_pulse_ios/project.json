@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Restore the missing import Foundation in Shared/WidgetPlannerCore.swift, which caused every Date/TimeZone/DateFormatter/Locale error.",
+  "description": "Changelog records the missing Foundation import that broke the shared planner compile.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
