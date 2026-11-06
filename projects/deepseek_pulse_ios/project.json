@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Timeline planner: stale crossing strictly past the codec threshold, bounded horizon, every UTC midnight inside it, and caps that cannot drop now, the stale crossing or a near transition.",
+  "description": "Account policy without fingerprints: the app compares normalized keys in memory only, and Shared exposes a pure generation decision for real Swift tests.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

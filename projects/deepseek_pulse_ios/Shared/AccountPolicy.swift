@@ -2,14 +2,36 @@ import Foundation
 
 // DeepSeek Pulse — account generation and balance acceptance policy.
 //
-// Foundation only, compiled into BOTH targets (app + widget extension) so the CI test harness can
-// execute it with real Swift. It holds no secret: a generation is just an integer that increments
-// whenever the signed-in account changes.
+// Foundation only, compiled into BOTH targets (app + widget extension) so the CI harness executes
+// it with real Swift. It contains no secret and no derived secret:
 //
-// Why this exists: an in-flight balance request carries the generation it was started under. If the
-// user removes their key or switches account before the response arrives, accepting that response
-// would write the OLD account's balance into the cache and onto the Home Screen. Accepting only a
-// matching, still-current generation makes that impossible.
+//   * the KEY ITSELF never appears here. The app compares the normalized previous and new key
+//     in memory only (inside SettingsStore, next to the Keychain), and passes a plain Bool.
+//   * no fingerprint, hash or token is computed, stored or serialized, so a shared payload cannot
+//     carry even a reversible hint of the key.
+//   * a generation is only a monotonically increasing integer naming "which account".
+
+/// The decision the app makes when the stored key changes.
+enum KeyChange: Equatable {
+    /// Same normalized key, or no key before and after: the cached balance still belongs to it.
+    case unchanged
+    /// The key was removed, or replaced with a different one: cached balance must be discarded.
+    case changed
+
+    var clearsCachedBalance: Bool { self == .changed }
+
+    /// Compares normalized keys. Call from the app only, with values read from the Keychain.
+    static func compare(previous: String?, next: String?) -> KeyChange {
+        let normalisedPrevious = normalise(previous)
+        let normalisedNext = normalise(next)
+        return normalisedPrevious == normalisedNext ? .unchanged : .changed
+    }
+
+    /// Trims surrounding whitespace; an all-whitespace key means "no key".
+    static func normalise(_ key: String?) -> String {
+        (key ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
 
 /// Tracks which account a piece of work belongs to.
 struct AccountGeneration: Equatable {
@@ -49,12 +71,11 @@ enum BalanceAcceptance: Equatable {
     case accept
     /// The account changed or the key was removed after the request started.
     case discardStaleAccount
-    /// No usable key existed when the request would have been sent.
+    /// No usable key existed when the decision was made.
     case discardNoKey
 
     var shouldCache: Bool { self == .accept }
 
-    /// Short reason used in diagnostics and Widget Studio.
     var reason: String {
         switch self {
         case .accept: return "accepted"
@@ -73,22 +94,5 @@ enum AccountPolicy {
         guard hasKey else { return .discardNoKey }
         guard let ticket = ticket else { return .discardStaleAccount }
         return current.accepts(ticket) ? .accept : .discardStaleAccount
-    }
-
-    /// The cache must be cleared whenever the key is removed or replaced.
-    static func clearsCache(previousKeyHash: Int?, newKeyHash: Int?) -> Bool {
-        previousKeyHash != newKeyHash
-    }
-
-    /// Non-reversible fingerprint used only to detect a key change in memory. Never persisted and
-    /// never written to the shared container.
-    static func keyFingerprint(_ key: String) -> Int? {
-        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        var hash = 5381
-        for scalar in trimmed.unicodeScalars {
-            hash = (hash &* 33) &+ Int(scalar.value)
-        }
-        return hash
     }
 }
