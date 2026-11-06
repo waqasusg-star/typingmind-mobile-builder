@@ -12,6 +12,7 @@ struct SavedDrama: Codable {
 }
 
 /// Favorites, per-episode resume positions and recent history. Hiding history never deletes them.
+/// Progress writes are throttled (see `ProgressWritePolicy`) and flushed when the app backgrounds.
 final class Library {
     static let shared = Library()
 
@@ -26,6 +27,9 @@ final class Library {
     private var completed: [String: Bool] = [:]
     private var durations: [String: Double] = [:]
 
+    private var lastWrite: Date?
+    private var pendingFlush = false
+
     private init() { load() }
 
     private func load() {
@@ -38,11 +42,24 @@ final class Library {
         durations = defaults.dictionary(forKey: durationsKey) as? [String: Double] ?? [:]
     }
 
-    private func persist() {
+    private func persist(force: Bool) {
+        let now = Date()
+        guard ProgressWritePolicy.shouldFlush(last: lastWrite, now: now, force: force) else {
+            pendingFlush = true
+            return
+        }
         if let data = try? JSONEncoder().encode(records) { defaults.set(data, forKey: recordsKey) }
         defaults.set(positions, forKey: positionsKey)
         defaults.set(completed, forKey: completedKey)
         defaults.set(durations, forKey: durationsKey)
+        lastWrite = now
+        pendingFlush = false
+    }
+
+    /// Writes anything the throttle deferred, e.g. when the app is about to be suspended.
+    func flushPendingWrites() {
+        guard pendingFlush else { return }
+        persist(force: true)
     }
 
     private func positionKey(_ url: String, _ episode: Int) -> String { url + "#" + String(episode) }
@@ -79,7 +96,8 @@ final class Library {
         let key = positionKey(url, number)
         positions[key] = max(0, position)
         if duration > 0 { durations[key] = duration }
-        if completedFlag || (duration > 0 && position >= duration - 1) { completed[key] = true }
+        let finished = completedFlag || (duration > 0 && position >= duration - 1)
+        if finished { completed[key] = true }
         var record = get(url) ?? SavedDrama(url: url, title: title)
         record.title = String(title.prefix(200))
         record.episode = number
@@ -88,7 +106,7 @@ final class Library {
         record.watchedAt = Date().timeIntervalSince1970
         records.removeAll { $0.url == url }
         records.append(record)
-        persist()
+        persist(force: finished)
     }
 
     @discardableResult
@@ -100,7 +118,7 @@ final class Library {
         if record.favorite { record.favoriteAt = Date().timeIntervalSince1970 }
         records.removeAll { $0.url == url }
         records.append(record)
-        persist()
+        persist(force: true)
         return record.favorite
     }
 
@@ -109,7 +127,7 @@ final class Library {
         record.favorite = false
         records.removeAll { $0.url == url }
         records.append(record)
-        persist()
+        persist(force: true)
     }
 
     func removeHistory(_ raw: String) {
@@ -117,7 +135,7 @@ final class Library {
         record.watchedAt = 0
         records.removeAll { $0.url == url }
         records.append(record)
-        persist()
+        persist(force: true)
     }
 
     func clearHistory() {
@@ -126,6 +144,6 @@ final class Library {
             copy.watchedAt = 0
             return copy
         }
-        persist()
+        persist(force: true)
     }
 }

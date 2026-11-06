@@ -5,10 +5,10 @@
   "app_name": "HDrama",
   "bundle_id": "com.waqas.hdrama",
   "scheme": "HDrama",
-  "version": "1.1.4",
-  "build_number": "6",
+  "version": "1.1.5",
+  "build_number": "7",
   "minimum_ios": "15.0",
-  "description": "HDrama maintenance: guarded download preparation cancellation, offline-path and network lifecycle fixes.",
+  "description": "HDrama 1.1.5: throttled progress persistence with background flush, retained 1.1.4 cancellation gate and compatibility fixes.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

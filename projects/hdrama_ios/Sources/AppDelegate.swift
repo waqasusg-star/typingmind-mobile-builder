@@ -23,4 +23,9 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
                      completionHandler: @escaping () -> Void) {
         DownloadStore.shared.registerBackgroundEvents(identifier, completion: completionHandler)
     }
+
+    func applicationDidEnterBackground(_ application: UIApplication) {
+        // Persist any playback progress that the write throttle deferred.
+        Library.shared.flushPendingWrites()
+    }
 }

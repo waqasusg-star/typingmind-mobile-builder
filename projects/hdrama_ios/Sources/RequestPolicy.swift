@@ -77,3 +77,15 @@ struct DownloadResolutionGate {
         return true
     }
 }
+
+/// Throttles playback-progress writes so a five-second checkpoint does not re-encode the whole
+/// library every time. Favourite/history actions and completed episodes always write immediately.
+enum ProgressWritePolicy {
+    static let minimumInterval: TimeInterval = 3
+
+    static func shouldFlush(last: Date?, now: Date, force: Bool) -> Bool {
+        if force { return true }
+        guard let last = last else { return true }
+        return now.timeIntervalSince(last) >= minimumInterval
+    }
+}
