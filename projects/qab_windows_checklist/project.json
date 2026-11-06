@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "project_type": "flutter",
+  "project_id": "qab_windows_checklist",
+  "app_name": "QA Task Utility",
+  "bundle_id": "com.waqas.qabwindowschecklist",
+  "description": "Local-only Windows task utility for isolated builder acceptance testing. No network, no accounts, no plugins."
+}
