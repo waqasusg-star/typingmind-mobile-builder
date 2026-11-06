@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "project_type": "native_android",
+  "project_id": "qab_android_checklist",
+  "app_name": "QA Checklist",
+  "bundle_id": "com.waqas.qabchecklist",
+  "namespace": "com.waqas.qabchecklist",
+  "version": "1.0.0",
+  "build_number": "1",
+  "minimum_android": 26,
+  "target_android": 35
+}
