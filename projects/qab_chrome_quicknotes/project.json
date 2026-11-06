@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "project_type": "extension",
+  "project_id": "qab_chrome_quicknotes",
+  "app_name": "QA Quick Notes",
+  "description": "Local-only MV3 quick notes popup for isolated builder acceptance testing. No host permissions, no network, no accounts."
+}

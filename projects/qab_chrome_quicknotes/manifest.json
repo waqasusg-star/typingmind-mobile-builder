@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "QA Quick Notes",
+  "version": "1.0.0",
+  "version_name": "1.0.0",
+  "description": "Local-only quick notes popup. Stores notes in chrome.storage.local, requests no host permissions and makes no network calls.",
+  "action": {
+    "default_title": "QA Quick Notes",
+    "default_popup": "popup.html"
+  },
+  "permissions": [
+    "storage"
+  ]
+}

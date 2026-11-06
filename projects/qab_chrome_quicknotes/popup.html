@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>QA Quick Notes</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="app__header">
+        <h1>QA Quick Notes</h1>
+        <p class="app__subtitle">Local-only · v1.0.0 · stays in this browser</p>
+      </header>
+
+      <form id="composer" class="composer" novalidate>
+        <label class="visually-hidden" for="note">Note text</label>
+        <textarea
+          id="note"
+          rows="3"
+          maxlength="200"
+          placeholder="Write a short note…"
+          aria-describedby="note-help note-error"
+        ></textarea>
+        <p id="note-help" class="hint"><span id="count">0</span>/200 characters</p>
+        <p id="note-error" class="error" role="alert" hidden></p>
+        <button id="save" type="submit">Save note</button>
+      </form>
+
+      <p id="status" class="status" role="status" aria-live="polite" data-state="idle" hidden></p>
+
+      <section class="notes-section" aria-labelledby="notes-heading">
+        <h2 id="notes-heading">Saved notes</h2>
+        <p id="empty" class="empty">No notes yet. Add your first note above.</p>
+        <ul id="notes" class="notes"></ul>
+      </section>
+
+      <footer class="app__footer">
+        <button id="restore" type="button" class="secondary" hidden>Restore last saved copy</button>
+      </footer>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
