@@ -2,8 +2,8 @@ import UIKit
 
 /// Widget Studio.
 ///
-/// Renders the widget-sized layouts with the live saved schedule, and states plainly which parts of
-/// a Home-Screen widget this build contains and which need a WidgetKit extension target in Xcode.
+/// Renders the widget-sized layouts with the live saved schedule, writes the shared widget
+/// snapshot, and states exactly how to add the real Home Screen / Lock Screen widget.
 final class WidgetStudioViewController: UIViewController {
 
     private let scrollView = UIScrollView()
@@ -13,6 +13,7 @@ final class WidgetStudioViewController: UIViewController {
     private let lockCard = WidgetLockScreenCardView(frame: .zero)
     private let liveCard = LiveActivityCardView(frame: .zero)
     private let statusLabel = Labels.caption("")
+    private let bridgeLabel = Labels.caption("")
 
     var onRequestRefresh: (() -> Void)?
 
@@ -20,12 +21,13 @@ final class WidgetStudioViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Widgets & Live Activity"
+        title = "Widgets"
         view.backgroundColor = AppColors.background
         navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Close", style: .plain, target: self, action: #selector(closeTapped))
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Done", style: .done, target: self, action: #selector(closeTapped))
         buildLayout()
         render()
+        writeSnapshot()
         startClock()
     }
 
@@ -56,24 +58,38 @@ final class WidgetStudioViewController: UIViewController {
         ])
 
         let intro = CardView()
-        intro.content.addArrangedSubview(Labels.title("Widget previews"))
-        intro.content.addArrangedSubview(Labels.caption("These are the widget layouts in this build, drawn with your saved schedule. WidgetPlanner supplies the state, the countdown and the next switch, so the app, these previews and the Live Activity card always agree."))
+        intro.content.addArrangedSubview(Labels.title("Real widget installed"))
+        intro.content.addArrangedSubview(Labels.caption("This build contains the DeepSeekPulseWidgets extension. The cards below are in-app previews drawn from the same WidgetPlanner state as the real widget, so what you see here is what the Home Screen widget computes."))
         stack.addArrangedSubview(intro)
+
+        let addSteps = CardView()
+        addSteps.content.addArrangedSubview(Labels.title("Add the widget"))
+        addSteps.content.addArrangedSubview(Labels.caption("1. Open this app once so it saves your balance and schedule for the widget."))
+        addSteps.content.addArrangedSubview(Labels.caption("2. Go to the Home Screen, touch and hold an empty area, then tap Edit or the + button."))
+        addSteps.content.addArrangedSubview(Labels.caption("3. Search for DeepSeek Pulse, pick the small or medium size, then tap Add Widget."))
+        addSteps.content.addArrangedSubview(Labels.caption("For the Lock Screen, use Edit Lock Screen, then add a widget and choose DeepSeek Pulse. Lock Screen widgets need iOS 16 or later; the app itself runs on iOS 15."))
+        stack.addArrangedSubview(addSteps)
 
         stack.addArrangedSubview(titledCard(title: "Home Screen · medium", caption: "Full schedule card with the 24-hour band.", content: fullCard, height: 190))
         stack.addArrangedSubview(titledCard(title: "Home Screen · small", caption: "State and countdown only.", content: compactCard, height: 150))
         stack.addArrangedSubview(titledCard(title: "Lock Screen", caption: "Single-line state and countdown.", content: lockCard, height: 92))
-        stack.addArrangedSubview(titledCard(title: "Dynamic Island / Live Activity", caption: "Expanding card used by the ActivityKit layout.", content: liveCard, height: 132))
+        stack.addArrangedSubview(titledCard(title: "In-app card", caption: "Same data as the expanded widget layout. This is not a Dynamic Island Live Activity.", content: liveCard, height: 132))
 
         let policy = CardView()
         policy.content.addArrangedSubview(Labels.title("Refresh policy"))
-        policy.content.addArrangedSubview(Labels.caption("A refresh is requested just after the next peak/off-peak switch and never more than once a minute from the app. iOS itself limits widget refreshes (about 15 minutes, 60 in Low Power Mode), and the deep link deepseekpulse://status opens this screen."))
+        policy.content.addArrangedSubview(Labels.caption("The app asks iOS to redraw the widget after a balance refresh or a settings change. iOS controls the actual schedule and normally allows roughly one refresh every 15 minutes, longer in Low Power Mode. The widget makes no network request and never counts down second by second."))
         stack.addArrangedSubview(policy)
 
-        let extensionCard = CardView()
-        extensionCard.content.addArrangedSubview(Labels.title("What is still missing for the Home Screen"))
-        extensionCard.content.addArrangedSubview(Labels.caption("A Home-Screen or Lock-Screen widget and a Dynamic Island Live Activity must run in their own WidgetKit / ActivityKit extension targets with their own Info.plist and entitlements, plus an App Group for the shared schedule. This build cannot package those extra targets, so the layouts live in the app and are shown here. Open the delivered source in Xcode, add a Widget Extension target that reuses WidgetPlanner and the widget views, sign it with your team and install."))
-        stack.addArrangedSubview(extensionCard)
+        let shared = CardView()
+        shared.content.addArrangedSubview(Labels.title("Shared data"))
+        shared.content.addArrangedSubview(Labels.caption("The widget reads only a display snapshot from the App Group " + WidgetShared.appGroupIdentifier + ": your formatted balance, the schedule, the rate labels and a hasAPIKey flag. Your API key stays in the iOS Keychain and is never copied into that file."))
+        shared.content.addArrangedSubview(bridgeLabel)
+        stack.addArrangedSubview(shared)
+
+        let limits = CardView()
+        limits.content.addArrangedSubview(Labels.title("Signing requirement"))
+        limits.content.addArrangedSubview(Labels.caption("The app bundle and the DeepSeekPulseWidgets extension must be signed together with the same team and matching App Group profiles. If the group entitlement is missing, the widget shows a setup message instead of numbers."))
+        stack.addArrangedSubview(limits)
 
         stack.addArrangedSubview(statusLabel)
     }
@@ -96,6 +112,13 @@ final class WidgetStudioViewController: UIViewController {
         clock.tolerance = 0.2
         RunLoop.main.add(clock, forMode: .common)
         timer = clock
+    }
+
+    /// Writes the shared snapshot when the screen opens, so the widget is not left empty.
+    private func writeSnapshot() {
+        let result = WidgetBridge.refresh(store: SettingsStore.shared)
+        bridgeLabel.text = result.description
+        bridgeLabel.textColor = result.isWritten ? AppColors.offPeak : AppColors.danger
     }
 
     private func render() {

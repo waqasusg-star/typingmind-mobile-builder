@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Write the shared widget snapshot after balance fetch, settings save and API-key removal; reload WidgetKit timelines.",
+  "description": "Widget Studio now reports the installed extension, writes the shared snapshot and lists the real add-widget steps.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
