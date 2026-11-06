@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Add explicit key save and removal result tests plus non-discount timeline coverage.",
+  "description": "Share the keychain mutation-routing policy so update/add decisions are testable, and make removal invalidate after delete OR item-not-found even when no key was loaded.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

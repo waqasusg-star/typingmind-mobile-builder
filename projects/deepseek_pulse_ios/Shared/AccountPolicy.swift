@@ -83,7 +83,7 @@ enum KeyStoreDecision {
         !result.isStored
     }
 
-    /// Should the cache and generation be invalidated?
+    /// Should the cache and generation be invalidated after a save?
     static func invalidates(_ result: KeySaveResult) -> Bool {
         result.shouldClearCachedBalance
     }
@@ -94,9 +94,43 @@ enum KeyStoreDecision {
     }
 
     /// Should removal invalidate the cache?
+    ///
+    /// True for any successful removal, not only one that changed the loaded key: a stale cached
+    /// balance can exist even when the keychain currently holds no key (for example the key was
+    /// cleared outside the app), so the numbers must still go.
     static func invalidates(_ result: KeyRemovalResult) -> Bool {
-        result.shouldClearCachedBalance
+        result.isRemoved
     }
+}
+
+// MARK: - Keychain mutation routing
+
+/// How a keychain write must be performed.
+///
+/// The old adapter deleted the existing item first, so a failed add lost the previous key. This
+/// policy updates the existing item in place, adds only when the item is absent, and never
+/// schedules a delete on failure.
+enum KeyStoreMutationRoute: Equatable {
+    /// Update the existing item's value with SecItemUpdate.
+    case updateExisting
+    /// No item exists: create one with SecItemAdd.
+    case addNew
+    /// An unexpected status: report failure and leave the stored item untouched.
+    case fail
+
+    /// `status` is the OSStatus of the existence probe (SecItemUpdate result).
+    /// - Parameter itemMissingStatus: the errSecItemNotFound raw value, injected by the adapter.
+    static func route(probeStatus: Int32, itemMissingStatus: Int32) -> KeyStoreMutationRoute {
+        if probeStatus == 0 { return .updateExisting }
+        if probeStatus == itemMissingStatus { return .addNew }
+        return .fail
+    }
+
+    /// A route must never delete an item as part of saving.
+    var deletesExistingItem: Bool { false }
+
+    /// Only a confirmed success may invalidate the account.
+    var isSuccess: Bool { self == .updateExisting || self == .addNew }
 }
 
 // MARK: - Account generation
