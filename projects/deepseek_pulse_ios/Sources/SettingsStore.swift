@@ -76,6 +76,55 @@ final class SettingsStore {
         !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// Increments whenever the account changes, so late responses for a previous key are discarded.
+    private(set) var accountGeneration = AccountGeneration.initial
+
+    /// Fingerprint of the key the cached balance belongs to. In memory only, never persisted.
+    private var cachedKeyFingerprint: Int?
+
+    /// A ticket for a balance request that is about to start.
+    func currentAccountTicket() -> AccountTicket {
+        accountGeneration.ticket()
+    }
+
+    /// Stores the key and invalidates the previous account when it actually changed.
+    /// Returns true when the cache was cleared.
+    @discardableResult
+    func replaceAPIKey(_ newKey: String) -> Bool {
+        let previousFingerprint = AccountPolicy.keyFingerprint(apiKey)
+        let newFingerprint = AccountPolicy.keyFingerprint(newKey)
+        let trimmed = newKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            KeyStore.delete()
+        } else if !KeyStore.save(trimmed) {
+            return false
+        }
+        return finishKeyTransition(previousFingerprint: previousFingerprint, newFingerprint: newFingerprint)
+    }
+
+    /// Removes the key and invalidates the account.
+    @discardableResult
+    func removeAPIKey() -> Bool {
+        let previousFingerprint = AccountPolicy.keyFingerprint(apiKey)
+        KeyStore.delete()
+        return finishKeyTransition(previousFingerprint: previousFingerprint, newFingerprint: nil)
+    }
+
+    private func finishKeyTransition(previousFingerprint: Int?, newFingerprint: Int?) -> Bool {
+        guard AccountPolicy.clearsCache(previousKeyHash: previousFingerprint, newKeyHash: newFingerprint) else {
+            return false
+        }
+        accountGeneration.invalidate()
+        cachedKeyFingerprint = newFingerprint
+        cachedSnapshot = nil
+        return true
+    }
+
+    /// True when a finished request may still write to the cache.
+    func acceptsBalance(ticket: AccountTicket?) -> BalanceAcceptance {
+        AccountPolicy.acceptance(ticket: ticket, current: accountGeneration, hasKey: hasAPIKey)
+    }
+
     // MARK: Persistence
 
     func saveSchedule(_ value: PricingSchedule, isCustom: Bool) {
