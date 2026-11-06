@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Add an explicit key-save result type so a failed Keychain write can never be reported as saved.",
+  "description": "Explicit KeySaveResult so a failed Keychain write is never reported as saved, plus pure decision logic for tests.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

@@ -1,15 +1,17 @@
 import Foundation
 
-// DeepSeek Pulse — account generation and balance acceptance policy.
+// DeepSeek Pulse — account generation, key-change and balance acceptance policy.
 //
-// Foundation only, compiled into BOTH targets (app + widget extension) so the CI harness executes
-// it with real Swift. It contains no secret and no derived secret:
+// Foundation only, compiled into BOTH targets (app + widget extension) so the CI harness executes it
+// with real Swift. It contains no secret and no derived secret:
 //
-//   * the KEY ITSELF never appears here. The app compares the normalized previous and new key
-//     in memory only (inside SettingsStore, next to the Keychain), and passes a plain Bool.
+//   * the KEY ITSELF never appears here. The app compares the normalized previous and new key in
+//     memory only, inside SettingsStore next to the Keychain.
 //   * no fingerprint, hash or token is computed, stored or serialized, so a shared payload cannot
 //     carry even a reversible hint of the key.
 //   * a generation is only a monotonically increasing integer naming "which account".
+
+// MARK: - Key change
 
 /// The decision the app makes when the stored key changes.
 enum KeyChange: Equatable {
@@ -20,11 +22,9 @@ enum KeyChange: Equatable {
 
     var clearsCachedBalance: Bool { self == .changed }
 
-    /// Compares normalized keys. Call from the app only, with values read from the Keychain.
+    /// Compares normalized keys. Call with values read from the Keychain.
     static func compare(previous: String?, next: String?) -> KeyChange {
-        let normalisedPrevious = normalise(previous)
-        let normalisedNext = normalise(next)
-        return normalisedPrevious == normalisedNext ? .unchanged : .changed
+        normalise(previous) == normalise(next) ? .unchanged : .changed
     }
 
     /// Trims surrounding whitespace; an all-whitespace key means "no key".
@@ -32,6 +32,74 @@ enum KeyChange: Equatable {
         (key ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
+
+// MARK: - Explicit write result
+
+/// Outcome of a keychain write. Failure is its own case so the caller cannot mistake it for
+/// "nothing changed", which is a successful no-op with the opposite meaning.
+enum KeySaveResult: Equatable {
+    /// The key is stored. `change` says whether the account actually changed.
+    case saved(KeyChange)
+    /// The keychain write failed. The previous key, cache and generation are untouched.
+    case storeFailed
+
+    var isStored: Bool {
+        if case .saved = self { return true }
+        return false
+    }
+
+    /// Only a stored key that actually changed clears the cached balance.
+    var shouldClearCachedBalance: Bool {
+        if case .saved(let change) = self { return change.clearsCachedBalance }
+        return false
+    }
+
+    /// True only when this call really stored a new key for a different account.
+    var didChangeAccount: Bool { shouldClearCachedBalance }
+}
+
+/// Outcome of a key removal.
+enum KeyRemovalResult: Equatable {
+    case removed(KeyChange)
+    /// The keychain delete reported an error, so the key may still be present.
+    case deleteFailed
+
+    var isRemoved: Bool {
+        if case .removed = self { return true }
+        return false
+    }
+
+    var shouldClearCachedBalance: Bool {
+        if case .removed(let change) = self { return change.clearsCachedBalance }
+        return false
+    }
+}
+
+/// Pure decisions derived from a result, so tests do not need a Keychain.
+enum KeyStoreDecision {
+
+    /// Should the app show a failure message?
+    static func isFailure(_ result: KeySaveResult) -> Bool {
+        !result.isStored
+    }
+
+    /// Should the cache and generation be invalidated?
+    static func invalidates(_ result: KeySaveResult) -> Bool {
+        result.shouldClearCachedBalance
+    }
+
+    /// Should the app show a failure message for a removal?
+    static func isFailure(_ result: KeyRemovalResult) -> Bool {
+        !result.isRemoved
+    }
+
+    /// Should removal invalidate the cache?
+    static func invalidates(_ result: KeyRemovalResult) -> Bool {
+        result.shouldClearCachedBalance
+    }
+}
+
+// MARK: - Account generation
 
 /// Tracks which account a piece of work belongs to.
 struct AccountGeneration: Equatable {
@@ -44,7 +112,7 @@ struct AccountGeneration: Equatable {
         self.value = max(0, value)
     }
 
-    /// Bumps to a new generation. Called on key removal and on key change.
+    /// Bumps to a new generation. Called only after a confirmed key change or removal.
     mutating func invalidate() {
         value += 1
     }
