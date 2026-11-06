@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "DeepSeek Pulse 1.0.3 (build 4): shared Foundation widget snapshot types and cache codec for the App Group.",
+  "description": "Move WidgetPlanner and WidgetPolicy into Shared so the widget extension can compile them; remove the duplicate Sources copies.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

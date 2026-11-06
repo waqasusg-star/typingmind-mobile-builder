@@ -1,11 +1,8 @@
-import Foundation
-
-/// Platform-neutral widget state shared by the in-app card, the widget layouts and the Live
-/// Activity card.
-///
-/// This file depends only on `PricingSchedule`, `PricingState` and `ClockFormat` from
-/// `Sources/RequestPolicy.swift`, so the pipeline can compile it for executed checks without UIKit.
-enum WidgetPlanner {
+// Removed in 1.0.3 (build 4).
+//
+// WidgetPlanner now lives in Shared/WidgetPlanner.swift, because the DeepSeekPulseWidgets
+// extension compiles WidgetSources + Shared + Sources/RequestPolicy.swift and cannot see Sources/.
+// This file is intentionally reduced to comments so the type is declared exactly once.
 
     static let minutesPerDay = 1440
 
