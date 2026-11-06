@@ -15,8 +15,11 @@ def verified_files(folder, platform):
     elif platform=='windows':expected.update(installer_smoke_passed=True,runtime_smoke_passed=True,code_signing='unsigned')
     elif platform=='extension':expected.update(browser_smoke_passed=True,code_signing='unpacked-extension-zip')
     else:raise ValueError('Unsupported release platform')
+    if platform in {'windows','extension'}:expected.update(source_package_verified=True,package_verified=True)
+    if platform=='windows':expected['compile_passed']=True
     if any(report.get(k)!=v for k,v in expected.items()):raise ValueError('Build report does not match this successful signed build')
     names={'android':[pid+'-android.apk'],'ios':[pid+'-ios.ipa'],'ios_unsigned':[pid+'-ios-unsigned.ipa'],'windows':[pid+'-windows-setup.exe',pid+'-windows-portable.zip'],'extension':[pid+'-chrome-extension.zip']}[platform]
+    if platform in {'windows','extension'}:names.append(pid+'-'+platform+'-source.zip')
     actual=[];packages=[]
     for name in names:
         package=folder/name
@@ -25,7 +28,7 @@ def verified_files(folder, platform):
         actual.append({'name':name,'size_bytes':package.stat().st_size,'sha256':digest});packages.append(package)
     if report.get('files')!=actual:raise ValueError('Package hash or size differs from build report')
     checksum=folder/'SHA256SUMS.txt';checksum.write_text(''.join(f['sha256']+'  '+f['name']+'\n'for f in actual))
-    return [*packages,report_path,checksum]
+    return [*packages,report_path,checksum,*[folder/name for name in ['CHANGELOG.md','README.md','build.log'] if (folder/name).is_file()]]
 
 def main():
     repo=os.environ['GITHUB_REPOSITORY']

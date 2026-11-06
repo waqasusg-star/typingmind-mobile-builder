@@ -64,6 +64,7 @@ def build():
         logs.append(r.stdout+r.stderr)
         if r.returncode:raise ValueError('Chromium extension tests failed')
         report['browser_smoke_passed']=True;report['tests_passed']=True
+        report.update(app_name=manifest['name'],version=manifest['version'])
         report['permissions']=manifest.get('permissions',[]);report['host_permissions']=manifest.get('host_permissions',[])
         package=out/(report['project_id']+'-chrome-extension.zip')
         with zipfile.ZipFile(package,'w',zipfile.ZIP_DEFLATED)as z:
@@ -71,7 +72,8 @@ def build():
                 if p.is_file():z.write(p,p.relative_to(work))
         with zipfile.ZipFile(package)as z:
             if z.testzip()or'manifest.json'not in z.namelist():raise ValueError('Invalid extension ZIP')
-        report['files']=[{'name':package.name,'size_bytes':package.stat().st_size,'sha256':hashlib.sha256(package.read_bytes()).hexdigest()}];report['build_result']='success'
+        source_zip=worker.package_source(source,work,out,'extension',report)
+        report['files']=[{'name':p.name,'size_bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in [package,source_zip]];report['package_verified']=True;report['build_result']='success'
     except Exception as e:report['error']=str(e);logs.append(str(e))
     finally:
         (out/'Build-Report.json').write_text(json.dumps(report,indent=2));(out/'build.log').write_text('\n'.join(logs)[-120000:])

@@ -16,10 +16,11 @@ def build():
         return r.stdout
     try:
         work=temp/'windows-app';cfg=worker.prepare(root/'projects'/report['project_id'],work,run,'windows')
+        version,build_number=worker.app_version(work);report.update(app_name=cfg['app_name'],bundle_id=cfg['bundle_id'],version=version,build_number=build_number)
         report['flutter_sdk']=json.loads(run(['flutter','--version','--machine']))
         run(['flutter','pub','get'],work);run(['flutter','analyze'],work);report['analyze_passed']=True
         run(['flutter','test'],work);report['tests_passed']=True
-        run(['flutter','build','windows','--release','--build-number',os.environ['GITHUB_RUN_NUMBER']],work)
+        run(['flutter','build','windows','--release','--build-number',build_number],work);report['compile_passed']=True
         release=work/'build/windows/x64/runner/Release';pid=report['project_id']
         if not(release/(pid+'.exe')).is_file() or not(release/'flutter_windows.dll').is_file() or not(release/'data').is_dir():raise ValueError('Incomplete Windows runtime bundle')
         vswhere=Path(os.environ['ProgramFiles(x86)'])/'Microsoft Visual Studio/Installer/vswhere.exe'
@@ -39,7 +40,7 @@ def build():
         script.write_text(f'''[Setup]
 AppId={uuid.uuid5(uuid.NAMESPACE_DNS,cfg['bundle_id'])}
 AppName={appname}
-AppVersion=1.0.{os.environ['GITHUB_RUN_NUMBER']}
+AppVersion={version}
 DefaultDirName={{localappdata}}\\Programs\\{pid}
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
@@ -70,8 +71,8 @@ Name: "{{autoprograms}}\\{pid}"; Filename: "{{app}}\\{pid}.exe"
         finally:
             if proc.poll()is None:proc.terminate();proc.wait(timeout=15)
         run([installed/'unins000.exe','/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'])
-        report['files']=[{'name':p.name,'size_bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in [installer,portable]]
-        report['build_result']='success'
+        report['files']=[{'name':p.name,'size_bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in [installer,portable,worker.package_source(root/'projects'/pid,work,out,'windows',report)]]
+        report['package_verified']=True;report['build_result']='success'
     except Exception as e:report['error']=str(e);logs.append(str(e))
     finally:
         (out/'Build-Report.json').write_text(json.dumps(report,indent=2),encoding='utf-8');(out/'build.log').write_text('\n'.join(logs)[-120000:],encoding='utf-8')

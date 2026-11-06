@@ -47,7 +47,7 @@ def prepare(source,work,run,platforms='android,ios'):
         if p.name in {'lib','test','assets'}:
             if not p.is_dir():raise ValueError('Expected source directory')
             shutil.rmtree(work/p.name,ignore_errors=True);shutil.copytree(p,work/p.name)
-        elif p.name in {'pubspec.yaml','analysis_options.yaml','README.md'}:shutil.copy2(p,work/p.name)
+        elif p.name in {'pubspec.yaml','analysis_options.yaml','README.md','CHANGELOG.md'}:shutil.copy2(p,work/p.name)
         elif p.name!='project.json':raise ValueError('Unsupported project-root file')
     if not(source/'pubspec.yaml').exists():
         (work/'pubspec.yaml').write_text(f'name: {pid}\ndescription: App built from TypingMind\npublish_to: none\nversion: 1.0.0+1\nenvironment:\n  sdk: ">=3.4.0 <4.0.0"\ndependencies:\n  flutter:\n    sdk: flutter\ndev_dependencies:\n  flutter_test:\n    sdk: flutter\nflutter:\n  uses-material-design: true\n')
@@ -90,6 +90,43 @@ def prepare(source,work,run,platforms='android,ios'):
     plist['CFBundleDisplayName']=name
     with info.open('wb')as f:plistlib.dump(plist,f)
     return cfg
+
+
+def app_version(work):
+    match=re.search(r"""(?m)^version:\s*['"]?(\d+\.\d+\.\d+)\+(\d{1,9})['"]?\s*(?:#.*)?$""",(work/'pubspec.yaml').read_text())
+    if not match:raise ValueError('Set pubspec version explicitly as MAJOR.MINOR.PATCH+BUILD')
+    return match.group(1),match.group(2)
+
+def package_source(source,work,out,platform,report):
+    excluded={'.git','.dart_tool','.idea','.vscode','build','ephemeral'}
+    entries={}
+    def add_tree(base,prefix=''):
+        for p in sorted(base.rglob('*')):
+            rel=p.relative_to(base)
+            if any(part in excluded for part in rel.parts):continue
+            if p.is_symlink():raise ValueError('Source archive refuses symlinks')
+            if not p.is_file():continue
+            if p.suffix.lower() in {'.p12','.pfx','.jks','.keystore','.mobileprovision','.pem','.key'}:raise ValueError('Signing material refused in source archive')
+            if p.stat().st_size>2097152:raise ValueError('Source archive contains an oversized file')
+            entries[prefix+rel.as_posix()]=p.read_bytes()
+    add_tree(work)
+    if platform=='extension':
+        if (source/'tests').is_dir():add_tree(source/'tests','tests/')
+        entries['tools/test_extension.cjs']=Path(__file__).with_name('test_extension.cjs').read_bytes()
+    for name in ['project.json','README.md','CHANGELOG.md']:
+        p=source/name
+        if not p.is_file() or p.is_symlink():raise ValueError('Complete source delivery requires '+name)
+        entries[name]=p.read_bytes()
+        if name!='project.json':shutil.copy2(p,out/name)
+    entries['BUILDER-SOURCE.json']=json.dumps({'schema':1,'project_id':report['project_id'],'source_sha':report['source_sha'],'platform':platform,'version':report.get('version'),'build_number':report.get('build_number'),'build_tools':'Flutter SDK and platform toolchain' if platform=='windows' else 'Chrome Manifest V3; optional Playwright test harness in tools/'},indent=2).encode()
+    if sum(map(len,entries.values()))>20971520:raise ValueError('Source archive exceeds 20 MiB')
+    package=out/(report['project_id']+'-'+platform+'-source.zip')
+    with zipfile.ZipFile(package,'w',zipfile.ZIP_DEFLATED)as z:
+        for name,data in sorted(entries.items()):z.writestr(name,data)
+    with zipfile.ZipFile(package)as z:
+        if z.testzip()or set(z.namelist())!=set(entries):raise ValueError('Source archive validation failed')
+    report['source_package_verified']=True
+    return package
 
 def build(platform):
     validate();root=Path(os.environ['GITHUB_WORKSPACE']);temp=Path(os.environ['RUNNER_TEMP']);output=root/'output';output.mkdir(exist_ok=True)
