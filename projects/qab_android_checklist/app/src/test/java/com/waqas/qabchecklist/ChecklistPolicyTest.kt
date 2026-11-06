@@ -117,7 +117,10 @@ class ChecklistPolicyTest {
         val toggled = ChecklistPolicy.toggle(tasks, "b")
         assertFalse(toggled[0].done)
         assertTrue(toggled[1].done)
-        assertFalse(ChecklistPolicy.toggle(toggled, "missing")[1] == false)
+        val untouched = ChecklistPolicy.toggle(toggled, "missing")
+        assertEquals(2, untouched.size)
+        assertTrue(untouched[1].done)
+        assertEquals("b", untouched[1].id)
     }
 
     @Test

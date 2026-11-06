@@ -6,3 +6,5 @@
 - Local task checklist with priorities, validation, empty/error states, progress summary.
 - JVM unit tests for policy, ordering, serialization and corruption recovery.
 - Light/dark themes and accessibility labels/live regions.
+- Fixed a unit-test assertion that compared a Task to a Boolean; the no-op toggle path is now
+  asserted through the task state instead.
