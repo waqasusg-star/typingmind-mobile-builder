@@ -503,14 +503,16 @@ final class SettingsViewController: UIViewController {
     }
 
     @objc private func removeKey() {
-        KeyStore.delete()
+        let store = SettingsStore.shared
+        // Invalidate first: any in-flight balance response then belongs to a dead generation.
+        let cleared = store.removeAPIKey()
         keyField.text = ""
-        SettingsStore.shared.cachedSnapshot = nil
-        // The shared widget snapshot carries no key, but it does carry the balance. Clearing the
-        // key must also clear the widget's copy so a removed account leaves no numbers on screen.
-        let widgetResult = WidgetBridge.refresh(store: SettingsStore.shared)
+        let widgetResult = WidgetBridge.refresh(store: store)
         NotificationCenter.default.post(name: .deepSeekSettingsChanged, object: nil)
-        var message = "The key was deleted from the Keychain and the cached balance was cleared."
+        var message = "The key was deleted from the Keychain."
+        if cleared {
+            message += " The cached balance was cleared."
+        }
         if widgetResult == .groupUnavailable {
             message += " The widget cannot read app data until both bundles share the App Group."
         } else if !widgetResult.isWritten {
@@ -640,8 +642,11 @@ final class SettingsViewController: UIViewController {
         let ratesAreCustom = models != RateSeeds.models
 
         let key = keyField.text ?? ""
+        // replaceAPIKey compares against the stored key: a real change invalidates the previous
+        // account and clears its cached balance, so numbers from the old account cannot linger.
         if !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            if !KeyStore.save(key) {
+            store.replaceAPIKey(key)
+            if KeyStore.load()?.isEmpty ?? true {
                 alert("Keychain error", "The API key could not be stored in the iOS Keychain. Try again.")
                 return
             }
