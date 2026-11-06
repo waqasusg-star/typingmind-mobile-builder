@@ -5,8 +5,9 @@ import SwiftUI
 // DeepSeek Pulse — WidgetKit timeline provider.
 //
 // Compiled into the DeepSeekPulseWidgets extension together with Shared/*.swift and
-// Sources/RequestPolicy.swift. All pricing maths is delegated to WidgetPlanner. The provider makes
-// no network request and never reads the Keychain: it only reads the App Group snapshot the app wrote.
+// Sources/RequestPolicy.swift. All pricing maths is delegated to WidgetPlanner, so the widget and
+// the app cannot disagree. The provider makes no network request and never reads the Keychain:
+// it only reads the App Group snapshot the app wrote.
 
 struct PulseEntry: TimelineEntry {
     let date: Date
@@ -24,10 +25,19 @@ struct PulseEntry: TimelineEntry {
         return WidgetPlanner.headline(snapshot: snapshot, discountsEnabled: schedule.discountsEnabled)
     }
 
+    /// When the next switch happens, if one is known. Views use this for a self-updating timer.
+    var nextSwitchAt: Date? {
+        guard envelope.state.isUsable,
+              let schedule = envelope.schedule,
+              schedule.discountsEnabled else { return nil }
+        return snapshot?.nextSwitchAt
+    }
+
+    /// Static countdown text used only when a live timer is not appropriate.
     var countdownText: String {
         guard envelope.state.isUsable else { return "--:--" }
         guard let schedule = envelope.schedule, schedule.discountsEnabled else { return "STD" }
-        guard let target = snapshot?.nextSwitchAt else { return "--" }
+        guard let target = nextSwitchAt else { return "--" }
         return WidgetPlanner.countdown(from: date, to: target)
     }
 
@@ -53,28 +63,47 @@ struct PulseTimelineProvider: TimelineProvider {
         completion(makeEntry(at: Date()))
     }
 
+    /// Builds entries on the real boundaries the snapshot implies: the next peak/off-peak switch,
+    /// the moment the cached balance turns stale, and UTC midnight. iOS decides when to reload.
     func getTimeline(in context: Context, completion: @escaping (Timeline<PulseEntry>) -> Void) {
         let now = Date()
-        let entry = makeEntry(at: now)
-        var entries: [PulseEntry] = [entry]
-        if entry.envelope.schedule != nil, let target = entry.snapshot?.nextSwitchAt {
-            let delay = WidgetPolicy.refreshDelay(now: now, nextSwitchAt: target)
-            let nextDate = now.addingTimeInterval(delay)
-            entries.append(makeEntry(at: nextDate))
-            entries.append(makeEntry(at: nextDate.addingTimeInterval(WidgetPolicy.minimumRefreshInterval * 30)))
-        } else {
-            entries.append(makeEntry(at: now.addingTimeInterval(WidgetPolicy.maximumRefreshInterval)))
+        let envelope = readEnvelope(at: now)
+
+        guard let schedule = envelope.schedule else {
+            // No usable schedule: one entry plus a bounded retry date. Never a fabricated timeline.
+            let entries = [PulseEntry(date: now, envelope: envelope),
+                           PulseEntry(date: now.addingTimeInterval(WidgetPolicy.maximumRefreshInterval), envelope: envelope)]
+            completion(Timeline(entries: entries, policy: .atEnd))
+            return
+        }
+
+        let dates = WidgetTimelinePlanner.dates(now: now,
+                                               schedule: schedule,
+                                               dataWrittenAt: envelope.payload?.balanceFetchedAt)
+        var entries: [PulseEntry] = []
+        for date in dates {
+            // Re-decode for later dates so the stale badge flips exactly when the cache ages out.
+            let resolved = date == now ? envelope : readEnvelope(at: date)
+            entries.append(PulseEntry(date: date, envelope: resolved))
+        }
+        if entries.isEmpty {
+            entries.append(PulseEntry(date: now, envelope: envelope))
         }
         completion(Timeline(entries: entries, policy: .atEnd))
     }
 
     func makeEntry(at date: Date) -> PulseEntry {
+        PulseEntry(date: date, envelope: readEnvelope(at: date))
+    }
+
+    /// Reads the App Group snapshot. Missing container or file becomes a visible state, never a crash.
+    func readEnvelope(at date: Date) -> WidgetSnapshotEnvelope {
         guard let fileURL = WidgetCacheLocation.shared.fileURL else {
-            return PulseEntry(date: date, envelope: .failed(.groupUnavailable))
+            return .failed(.groupUnavailable)
         }
         guard let data = try? Data(contentsOf: fileURL) else {
-            return PulseEntry(date: date, envelope: .failed(.empty))
+            return .failed(.empty)
         }
-        return PulseEntry(date: date, envelope: WidgetCacheCodec.decode(data, now: date))
+        return WidgetCacheCodec.decode(data, now: date)
     }
 }
