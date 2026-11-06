@@ -1,6 +1,7 @@
 """Build reviewed native Swift source without signing credentials or uploaded scripts."""
 import hashlib,json,os,plistlib,re,shutil,subprocess,sys,zipfile
 from pathlib import Path
+import widgetkit_support as widgetkit
 
 def identity(env):
     for key,pattern in [('PROJECT_ID',r'[a-z][a-z0-9_]{1,39}'),('REQUEST_ID',r'[A-Za-z0-9][A-Za-z0-9_-]{5,63}'),('SOURCE_SHA',r'[a-f0-9]{40}')]:
@@ -14,6 +15,7 @@ def config(source):
     if not isinstance(cfg.get('app_name'),str)or not 1<=len(cfg['app_name'])<=80 or any(ord(c)<32 for c in cfg['app_name']):raise ValueError('Invalid app name')
     if float(cfg['minimum_ios'])<15:raise ValueError('Minimum supported deployment target is iOS 15')
     if not list((source/'Sources').rglob('*.swift')):raise ValueError('Missing Swift source')
+    widgetkit.validate_profile(source,cfg)
     return cfg
 
 def prepare(source,work):
@@ -26,7 +28,8 @@ def prepare(source,work):
         if p.is_symlink():raise ValueError('Symlink source refused')
         if not p.is_file():continue
         rel=p.relative_to(source)
-        if rel.parts[0] not in {'Sources','Resources','Tests'}:continue
+        if rel.parts[0] not in {'Sources','Resources','Tests','Shared','WidgetSources'}:continue
+        if rel.parts[0] in {'Shared','WidgetSources'} and p.suffix.lower()!='.swift':raise ValueError('Shared/WidgetSources accepts Swift text only')
         if p.stat().st_size>1048576:raise ValueError('Native source file too large')
         if p.suffix.lower()not in {'.swift','.json','.plist','.strings','.stringsdict','.storyboard','.xib','.xml','.txt','.md','.svg','.png','.jpg','.jpeg'}:raise ValueError('Unsupported native source file')
         target=work/rel;target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(p,target)
@@ -36,6 +39,7 @@ def prepare(source,work):
     target={'type':'application','platform':'iOS','sources':[{'path':'Sources'}],'settings':{'base':{'PRODUCT_BUNDLE_IDENTIFIER':cfg['bundle_id'],'MARKETING_VERSION':cfg['version'],'CURRENT_PROJECT_VERSION':str(cfg['build_number']),'SWIFT_VERSION':'5.0','TARGETED_DEVICE_FAMILY':'1,2','INFOPLIST_FILE':'Info.plist','CODE_SIGNING_ALLOWED':'NO','CODE_SIGNING_REQUIRED':'NO','CODE_SIGN_IDENTITY':'','ENABLE_USER_SCRIPT_SANDBOXING':'YES'}}}
     if(work/'Resources').is_dir():target['sources'].append({'path':'Resources'})
     spec={'name':scheme,'options':{'deploymentTarget':{'iOS':cfg['minimum_ios']},'createIntermediateGroups':True},'targets':{scheme:target},'schemes':{scheme:{'build':{'targets':{scheme:'all'}},'run':{'config':'Debug'},'archive':{'config':'Release'}}}}
+    widgetkit.configure_spec(work,spec,cfg)
     (work/'native-project.json').write_text(json.dumps(spec,indent=2))
     return cfg
 
@@ -52,26 +56,32 @@ def verify_bundle(app,cfg,run):
     if 'arm64'not in archs or any(a in {'x86_64','i386'}for a in archs):raise ValueError('Not an arm64 device app')
     return info,archs
 
-def verify_ipa(package,app_name,executable):
+def verify_ipa(package,app_name,executable,cfg=None):
     prefix='Payload/'+app_name+'/'
     with zipfile.ZipFile(package)as z:
         names=z.namelist()
         if z.testzip()or prefix+'Info.plist'not in names or prefix+executable not in names:raise ValueError('Invalid IPA Payload')
         if any(n.startswith('/')or'..'in n.split('/')or n.endswith('embedded.mobileprovision')for n in names):raise ValueError('Unsafe IPA entries')
+        if cfg is not None:widgetkit.verify_packaged_widget(z,prefix,cfg)
 
 def artifact_stem(cfg):
     return cfg['scheme']+'-iOS-'+cfg['version']+'-build'+str(cfg['build_number'])
 
-def package_source(source,out,cfg,source_sha):
+def package_source(source,out,cfg,source_sha,work=None):
     package=out/(artifact_stem(cfg)+'-source.zip')
     with zipfile.ZipFile(package,'w',compression=zipfile.ZIP_DEFLATED) as z:
         for p in sorted(source.rglob('*')):
             if p.is_symlink():raise ValueError('Unsafe source archive symlink')
             if not p.is_file():continue
             rel=p.relative_to(source)
-            if rel.parts[0] not in {'Sources','Resources','Tests'} and str(rel) not in {'project.yml','project.json','README.md','BUILD_NOTES.md','CHANGELOG.md'}:continue
-            if p.suffix.lower() in {'.p12','.pem','.key','.mobileprovision'}:raise ValueError('Signing files forbidden in source archive')
+            if rel.parts[0] not in {'Sources','Resources','Tests','Shared','WidgetSources'} and str(rel) not in {'project.yml','project.json','README.md','BUILD_NOTES.md','CHANGELOG.md'}:continue
+            if p.suffix.lower() in {'.p12','.pfx','.pem','.key','.mobileprovision','.keystore','.jks'}:raise ValueError('Signing files forbidden in source archive')
             z.write(p,cfg['scheme']+'-iOS/'+rel.as_posix())
+        if work is not None:
+            for name in widgetkit.GENERATED:
+                if (work/name).is_file():z.write(work/name,cfg['scheme']+'-iOS/'+name)
+        z.writestr(cfg['scheme']+'-iOS/BUILDER-REBUILD.md',widgetkit.rebuild_notes(cfg))
+        if widgetkit.enabled(cfg):z.writestr(cfg['scheme']+'-iOS/WIDGET-SIGNING.json',json.dumps(widgetkit.signing_requirements(cfg),indent=2))
         z.writestr(cfg['scheme']+'-iOS/SOURCE-COMMIT.txt',source_sha+'\n')
     with zipfile.ZipFile(package) as z:
         if z.testzip():raise ValueError('Source archive integrity failed')
@@ -89,14 +99,22 @@ def build():
     try:
         source=root/'projects'/report['project_id'];work=temp/('native-ios-'+report['request_id']);cfg=prepare(source,work)
         if cfg['project_id']!=report['project_id']:raise ValueError('Project ID mismatch')
-        report.update(app_name=cfg['app_name'],bundle_id=cfg['bundle_id'],version=cfg['version'],build_number=str(cfg['build_number']))
+        report.update(app_name=cfg['app_name'],bundle_id=cfg['bundle_id'],scheme=cfg['scheme'],version=cfg['version'],build_number=str(cfg['build_number']));report.update(widgetkit.initial_report(cfg))
         report['xcode_version']=run(['xcodebuild','-version']).strip();report['xcodegen_version']=run(['xcodegen','--version']).strip()
         tests=cfg.get('policy_test_sources',[])
         if tests:
             if tests!=['Sources/RequestPolicy.swift','Tests/PolicyTests.swift']:raise ValueError('Unsupported standalone policy test inputs')
             test_binary=temp/(report['request_id']+'-policy-tests')
-            run(['xcrun','swiftc',*[work/p for p in tests],'-o',test_binary],work)
+            policy_inputs=widgetkit.policy_sources(work,tests)
+            run(['xcrun','swiftc',*policy_inputs,'-o',test_binary],work)
+            report['policy_test_source_files']=[p.relative_to(work).as_posix() for p in policy_inputs]
             run([test_binary],work);report.update(tests_passed=True,tests_status='standalone_request_policy_tests_passed',app_ui_tests_passed=False)
+        widget_tests=widgetkit.widget_test_sources(work,cfg)
+        if widget_tests:
+            widget_test_binary=temp/(report['request_id']+'-widget-tests')
+            run(['xcrun','swiftc',*widget_tests,'-o',widget_test_binary],work)
+            run([widget_test_binary],work)
+            report.update(widget_shared_tests_passed=True,widget_test_source_files=[p.relative_to(work).as_posix() for p in widget_tests])
         run(['xcodegen','generate','--spec','native-project.json'],work)
         common=['xcodebuild','-project',cfg['scheme']+'.xcodeproj','-scheme',cfg['scheme'],'-configuration','Release','-sdk','iphoneos','-destination','generic/platform=iOS','CODE_SIGNING_ALLOWED=NO','CODE_SIGNING_REQUIRED=NO','CODE_SIGN_IDENTITY=','COMPILER_INDEX_STORE_ENABLE=NO']
         archive=temp/(report['request_id']+'.xcarchive')
@@ -105,14 +123,18 @@ def build():
         apps=list((archive/'Products/Applications').glob('*.app'))
         if len(apps)!=1:raise ValueError('Expected one archived iPhone app')
         app=apps[0];info,archs=verify_bundle(app,cfg,run);report['device_build_verified']=True;report['architectures']=archs
+        widgetkit.verify_archived_extensions(app,cfg,run,report)
         payload=temp/(report['request_id']+'-payload')/'Payload';payload.mkdir(parents=True)
         run(['ditto',app,payload/app.name])
         package=out/(artifact_stem(cfg)+'-ios-unsigned.ipa');run(['ditto','-c','-k','--keepParent',payload,package])
-        verify_ipa(package,app.name,info['CFBundleExecutable']);report['package_verified']=True
-        source_zip=package_source(source,out,cfg,report['source_sha']);report['source_package_verified']=True
+        verify_ipa(package,app.name,info['CFBundleExecutable'],cfg);report['package_verified']=True
+        source_zip=package_source(source,out,cfg,report['source_sha'],work);report['source_package_verified']=True
         if (source/'CHANGELOG.md').is_file():shutil.copy2(source/'CHANGELOG.md',out/'CHANGELOG.md')
         report['files']=[{'name':f.name,'size_bytes':f.stat().st_size,'sha256':hashlib.sha256(f.read_bytes()).hexdigest()} for f in [package,source_zip]]
         (out/'SIGN-BEFORE-INSTALL.txt').write_text('UNSIGNED arm64 iPhone device IPA. MUST BE SIGNED BEFORE INSTALLATION.\nUse your compatible UDID certificate/profile signing service. No signing credentials or device ID were used by this build. Physical-device behavior and signing-service compatibility have not been tested.\n')
+        if widgetkit.enabled(cfg):
+            (out/'WIDGET-SIGNING.json').write_text(json.dumps(widgetkit.signing_requirements(cfg),indent=2))
+            with (out/'SIGN-BEFORE-INSTALL.txt').open('a') as f:f.write('\n'+json.dumps(widgetkit.signing_requirements(cfg),indent=2)+'\n')
         report['build_result']='success'
     except Exception as exc:report['error']=str(exc);logs.append(str(exc))
     finally:
@@ -121,3 +143,4 @@ def build():
     if report['build_result']!='success':raise SystemExit(1)
 
 if __name__=='__main__':build()
+

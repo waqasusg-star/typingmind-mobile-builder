@@ -1,6 +1,7 @@
 """Publish only identity- and hash-verified unsigned native iPhone packages."""
 import hashlib,json,os,re,subprocess
 from pathlib import Path
+import widgetkit_support as widgetkit
 
 def verify(folder,env):
     pid=env['PROJECT_ID'];request=env['REQUEST_ID'];sha=env['SOURCE_SHA']
@@ -21,8 +22,9 @@ def verify(folder,env):
         packages.append(package);actual.append({'name':name,'size_bytes':package.stat().st_size,'sha256':hashlib.sha256(package.read_bytes()).hexdigest()})
     if len(packages)!=2 or sum(f.suffix=='.ipa' for f in packages)!=1 or sum(f.name.endswith('-source.zip') for f in packages)!=1:raise ValueError('IPA and matching source ZIP required')
     if data.get('files')!=actual:raise ValueError('Native package hash or size mismatch')
+    widgetkit.verify_release_widget(data,next(p for p in packages if p.suffix=='.ipa'))
     sums=folder/'SHA256SUMS.txt';sums.write_text(''.join(f['sha256']+'  '+f['name']+'\n' for f in actual))
-    return [*packages,report,sums,*([folder/'CHANGELOG.md'] if (folder/'CHANGELOG.md').is_file() else [])]
+    return [*packages,report,sums,*[folder/name for name in ['CHANGELOG.md','build.log','SIGN-BEFORE-INSTALL.txt','WIDGET-SIGNING.json'] if (folder/name).is_file()]]
 
 def main():
     folder=Path('native-release');files=verify(folder,os.environ);repo=os.environ['GITHUB_REPOSITORY']
@@ -30,8 +32,9 @@ def main():
     tag='builds/'+os.environ['PROJECT_ID']+'/'+os.environ['REQUEST_ID']+'/native_ios_unsigned'
     data=json.loads((folder/'Build-Report.json').read_text())
     title=data.get('app_name',os.environ['PROJECT_ID'])+' iOS '+data['version']+' (build '+str(data['build_number'])+')'
-    notes=folder/'release-notes.txt';notes.write_text(title+'\nNative Swift iPhone device build from '+os.environ['SOURCE_SHA']+'. Compilation, static analysis, arm64 device bundle and IPA Payload checks passed. Matching source ZIP and SHA256SUMS included.\n\nMUST BE SIGNED BEFORE INSTALLATION. No credentials or UDIDs were used. See tests_status in Build-Report.json for the exact test scope. Full app/UI tests, Cloudflare completion and physical-device behavior were not verified.\n')
+    notes=folder/'release-notes.txt';notes.write_text(('WidgetKit extension embedded; signing both bundles and the requested App Group is still required. No widget gallery/device/Live Activity test is implied.\n\n' if data.get('widget_profile')=='widgetkit_v1' else '')+title+'\nNative Swift iPhone device build from '+os.environ['SOURCE_SHA']+'. Compilation, static analysis, arm64 device bundle and IPA Payload checks passed. Matching source ZIP and SHA256SUMS included.\n\nMUST BE SIGNED BEFORE INSTALLATION. No credentials or UDIDs were used. See tests_status in Build-Report.json for the exact test scope. Full app/UI tests, Cloudflare completion and physical-device behavior were not verified.\n')
     subprocess.run(['gh','release','create',tag,*map(str,files),'--repo',repo,'--draft','--target',os.environ['SOURCE_SHA'],'--title',title,'--notes-file',str(notes),'--latest=false'],check=True)
     subprocess.run(['gh','release','edit',tag,'--repo',repo,'--draft=false','--latest=false'],check=True)
 
 if __name__=='__main__':main()
+
