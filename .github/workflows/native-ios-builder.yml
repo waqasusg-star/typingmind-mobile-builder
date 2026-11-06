@@ -1,0 +1,56 @@
+name: Native iPhone App Builder
+run-name: Native iOS Builder / ${{ inputs.project_id }} / ${{ inputs.request_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      project_id: {description: Native project ID, required: true, type: string}
+      request_id: {description: Unique request ID, required: true, type: string}
+      source_sha: {description: Exact source commit SHA, required: true, type: string}
+permissions:
+  contents: read
+concurrency:
+  group: native-ios-${{ inputs.project_id }}-${{ inputs.request_id }}
+  cancel-in-progress: false
+env:
+  PROJECT_ID: ${{ inputs.project_id }}
+  REQUEST_ID: ${{ inputs.request_id }}
+  SOURCE_SHA: ${{ inputs.source_sha }}
+  PYTHONUTF8: '1'
+jobs:
+  build:
+    name: Compile and verify unsigned native iPhone IPA
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ inputs.source_sha }}', persist-credentials: false}
+      - name: Install XcodeGen from Homebrew
+        run: command -v xcodegen || brew install xcodegen
+      - name: Archive, analyze and verify device package
+        run: python3 .builder/native_ios.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Native-iOS-${{ inputs.project_id }}-${{ inputs.request_id }}
+          path: native-output/
+          retention-days: 14
+          if-no-files-found: error
+  publish:
+    name: Preserve verified native IPA download
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ inputs.source_sha }}', persist-credentials: false}
+      - uses: actions/download-artifact@v4
+        with:
+          name: Native-iOS-${{ inputs.project_id }}-${{ inputs.request_id }}
+          path: native-release/
+      - name: Publish verified unsigned native IPA
+        run: python3 .builder/publish_native_ios.py
+        env:
+          GH_TOKEN: ${{ github.token }}

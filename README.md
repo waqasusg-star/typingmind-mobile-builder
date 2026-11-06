@@ -2,6 +2,14 @@
 
 This personal plugin lets Waqas operate app builds from a TypingMind conversation. It is a build controller, not a compiler in the browser. The chat model writes real Flutter app source and tests; a dedicated GitHub repository persists them and GitHub Actions performs Android/Linux and iPhone/macOS builds.
 
+## Native Swift iPhone builds (v6)
+
+Version 6 adds a separate native Swift/UIKit macOS pipeline. Inspect uploads with Toolbox/JSZip, save original files and app identity with **Save Native iPhone Project**, then run **Build Native iPhone IPA** at the exact saved SHA. **Check Native iPhone Build** resumes the same request. The worker generates a controlled XcodeGen spec and typed Info.plist, archives and analyzes an arm64 iPhone device app, verifies its bundle/Payload, and publishes the IPA, report and SHA-256 through a separate verifying publisher. Unsigned export needs no certificates or UDIDs; it **must be signed before installation**.
+
+Supported native projects currently use Swift source, supported text Resources, system UIKit/WebKit/AVFoundation frameworks, audio background mode and minimum iOS 15. Uploaded build scripts, custom project overrides, third-party packages, entitlements and binary asset import are not supported by the controller. Extra requirements need a reviewed matching pipeline; never silently omit app capabilities. Tests are marked not run when no test target exists. Compile/analysis success does not imply unit/UI testing or physical-device testing.
+
+Read App Project now discovers actual project IDs with `paths:[]` and no ID, reports framework/source hints and limits its claims to the configured repository/branch. Use exact returned file paths. Repository operations belong in builder tools, not Toolbox network fetches. The generated plugin embeds backend constants only in functions that need them to reduce duplicated data.
+
 ## Current status
 
 The repository is public and Universal App Builder v5 is installed and enabled in TypingMind. A repository-only Contents/Actions read-write token with No expiration is configured in its password setting. Android release signing inputs are stored in encrypted GitHub Actions Secrets. TypingMind verified the connection, generated the `builder_test` Flutter counter app and widget tests, saved commit `d7cd70825a05c2b66116fd2754186b8b164ca84e`, and dispatched Android run [42108523682](https://github.com/waqasusg-star/typingmind-mobile-builder/actions/runs/42108523682). Analysis, tests, release compilation, signature verification and Release publication all passed. [Download the signed test APK and report](https://github.com/waqasusg-star/typingmind-mobile-builder/releases/tag/builds%2Fbuilder_test%2Fbt-e2e-android-0001-d7cd7082%2Fandroid). No physical phone was tested. Apple signing remains unconfigured; no installable IPA has been delivered.
