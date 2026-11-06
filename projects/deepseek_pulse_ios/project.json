@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Remove obsolete comment-only marker files; exactly one implementation of WidgetPlanner and WidgetPolicy remains, in Shared/WidgetPlannerCore.swift and Shared/WidgetPolicyCore.swift.",
+  "description": "Correct the WidgetPlannerCore header: the old Sources stub was removed, not retained.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

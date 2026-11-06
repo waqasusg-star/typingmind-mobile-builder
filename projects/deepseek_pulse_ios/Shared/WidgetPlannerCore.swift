@@ -4,7 +4,8 @@
 // Sources/RequestPolicy.swift and needs this type. Pure Foundation (no UIKit, no network).
 //
 // File basename is WidgetPlannerCore.swift, not WidgetPlanner.swift, because Swift rejects two files
-// with the same basename inside one app target. Sources/WidgetPlanner.swift is now a marker.
+// with the same basename inside one app target. The old Sources/WidgetPlanner.swift was removed in
+// 1.0.3 (build 4), so this is the only implementation of WidgetPlanner in the project.
 
 enum WidgetPlanner {
 
