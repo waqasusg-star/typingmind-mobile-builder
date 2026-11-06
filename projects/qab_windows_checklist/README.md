@@ -16,6 +16,8 @@ no plugins, no platform channels. Persistence uses `dart:io` in the app's own fo
 - Task data in `%APPDATA%\QaTaskUtility\tasks_v1.jsonl`, written to a temp file and renamed.
 - Corrupt payloads are copied to `tasks_v1_recovery.jsonl` and the app starts clean with a
   notice plus a "Restore recovery copy" action.
+- Stored titles are validated but kept as saved (only outer whitespace trimmed), so data
+  round-trips exactly.
 
 ## Tests
 
@@ -37,13 +39,17 @@ an app-process launch check on a real Windows runner.
 ```bash
 flutter pub get
 flutter build windows --release
-flutter build windows --release --config-only   # optional
 ```
 
 Version `1.0.0+1` is written into the app and the installer identity, not the workflow run number.
 
+## Install
+
+1. Run the generated `QA-Task-Utility-1.0.0-x64-Setup.exe` installer, or
+2. Unzip the portable ZIP and start `qa_task_utility.exe` from the extracted folder.
+
 ## Limits
 
 - No physical end-user Windows PC testing by this project; CI runs on a hosted Windows runner.
-- No installer signing certificate is used (unsigned publisher).
+- No installer signing certificate is used (unsigned publisher, SmartScreen may warn).
 - Single folder of local tasks; no sync, no cloud, no telemetry.

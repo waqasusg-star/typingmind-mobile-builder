@@ -94,6 +94,7 @@ class TitleValidation {
   bool get isValid => value != null;
 }
 
+/// Validates and normalises a title typed by the user.
 TitleValidation validateTitle(String? raw) {
   final collapsed = (raw ?? '').trim().replaceAll(RegExp(r'\s+'), ' ');
   if (collapsed.isEmpty) {
@@ -188,7 +189,8 @@ String encodeTasks(List<Task> tasks) {
 }
 
 /// Header line plus one JSON object per item line. A damaged item line is skipped
-/// instead of discarding the whole checklist.
+/// instead of discarding the whole checklist. Stored titles are validated but kept
+/// as saved (only outer whitespace is trimmed) so data round-trips exactly.
 DecodeResult decodeTasks(String? payload) {
   final raw = payload ?? '';
   if (raw.trim().isEmpty) return const DecodeResult(<Task>[], 0, true);
@@ -215,12 +217,12 @@ DecodeResult decodeTasks(String? payload) {
         skipped += 1;
         continue;
       }
-      final title = validateTitle(task.title);
-      if (!title.isValid) {
+      final trimmedTitle = task.title.trim();
+      if (trimmedTitle.isEmpty || trimmedTitle.length > maxTitleLength) {
         skipped += 1;
         continue;
       }
-      tasks.add(task.copyWith(title: title.value));
+      tasks.add(task.copyWith(title: trimmedTitle));
     } catch (_) {
       skipped += 1;
     }

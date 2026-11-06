@@ -114,6 +114,12 @@ void main() {
       expect(decoded.needsRecoveryCopy, isFalse);
     });
 
+    test('stored outer whitespace is trimmed but inner text is preserved', () {
+      final decoded = decodeTasks(encodeTasks(<Task>[task('t3', '  padded title  ')]));
+      expect(decoded.tasks.single.title, 'padded title');
+      expect(decoded.skippedLines, 0);
+    });
+
     test('blank payload is an empty checklist', () {
       expect(decodeTasks(null).formatOk, isTrue);
       expect(decodeTasks('   ').tasks, isEmpty);
