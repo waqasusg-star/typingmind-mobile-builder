@@ -1,3 +1,5 @@
+import Foundation
+
 // DeepSeek Pulse — shared widget state planner (Core).
 //
 // Moved to Shared/ for profile widgetkit_v1: the extension compiles WidgetSources + Shared +
