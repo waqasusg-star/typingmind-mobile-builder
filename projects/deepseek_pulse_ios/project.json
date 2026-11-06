@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Add WidgetTimelinePlanner.reloadDate so the provider can request a bounded timed reload instead of an open-ended atEnd policy.",
+  "description": "Provider uses a bounded timed reload policy so an ended peak window cannot persist until midnight.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

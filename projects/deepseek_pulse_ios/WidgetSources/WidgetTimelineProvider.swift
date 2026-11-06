@@ -63,17 +63,20 @@ struct PulseTimelineProvider: TimelineProvider {
         completion(makeEntry(at: Date()))
     }
 
-    /// Builds entries on the real boundaries the snapshot implies: the next peak/off-peak switch,
-    /// the moment the cached balance turns stale, and UTC midnight. iOS decides when to reload.
+    /// Builds entries on the real boundaries the snapshot implies: every pricing transition inside
+    /// the horizon, the moment the cached balance turns stale, and UTC midnights. The policy asks
+    /// for a reload at a bounded future instant rather than an open-ended .atEnd, so a finished peak
+    /// window cannot leave a stale PEAK badge until midnight. iOS still applies its own budget.
     func getTimeline(in context: Context, completion: @escaping (Timeline<PulseEntry>) -> Void) {
         let now = Date()
         let envelope = readEnvelope(at: now)
+        let reload = WidgetTimelinePlanner.reloadDate(now: now)
 
         guard let schedule = envelope.schedule else {
             // No usable schedule: one entry plus a bounded retry date. Never a fabricated timeline.
             let entries = [PulseEntry(date: now, envelope: envelope),
-                           PulseEntry(date: now.addingTimeInterval(WidgetPolicy.maximumRefreshInterval), envelope: envelope)]
-            completion(Timeline(entries: entries, policy: .atEnd))
+                           PulseEntry(date: reload, envelope: envelope)]
+            completion(Timeline(entries: entries, policy: .after(reload)))
             return
         }
 
@@ -89,7 +92,7 @@ struct PulseTimelineProvider: TimelineProvider {
         if entries.isEmpty {
             entries.append(PulseEntry(date: now, envelope: envelope))
         }
-        completion(Timeline(entries: entries, policy: .atEnd))
+        completion(Timeline(entries: entries, policy: .after(reload)))
     }
 
     func makeEntry(at date: Date) -> PulseEntry {
