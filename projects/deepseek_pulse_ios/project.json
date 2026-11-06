@@ -8,7 +8,7 @@
   "version": "1.0.2",
   "build_number": "3",
   "minimum_ios": "15.0",
-  "description": "DeepSeek Pulse 1.0.2 (build 3): open Widget Studio from the dashboard toolbar menu.",
+  "description": "DeepSeek Pulse 1.0.2 (build 3): add the widgetStudioTapped action that presents the Widget Studio.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

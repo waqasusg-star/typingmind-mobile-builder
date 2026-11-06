@@ -394,6 +394,17 @@ final class DashboardViewController: UIViewController {
         refresh()
     }
 
+    @objc private func widgetStudioTapped() {
+        let studio = WidgetStudioViewController()
+        studio.onRequestRefresh = { [weak self] in
+            self?.lastRateSignature = ""
+            self?.render()
+        }
+        let navigation = UINavigationController(rootViewController: studio)
+        navigation.modalPresentationStyle = .formSheet
+        present(navigation, animated: true)
+    }
+
     @objc private func settingsTapped() {
         let controller = SettingsViewController()
         controller.onSaved = { [weak self] in
