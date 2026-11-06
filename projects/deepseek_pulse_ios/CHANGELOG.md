@@ -58,6 +58,16 @@ saved schedule, prices and cached balance all carry over unchanged.
   new key in memory, increments an account generation, clears the cache, and in-flight balance
   requests are cancelled or discarded so a late response cannot repopulate a removed or changed
   account. No key, hash or fingerprint is stored or shared.
+- **A failed keychain write could destroy the stored key.** `KeyStore.save` called
+  `SecItemDelete` before `SecItemAdd`, so if the add failed the previous key was already gone and a
+  "previous key preserved" message would have been false. Writes now update the existing item with
+  `SecItemUpdate`, add only when the probe returns `errSecItemNotFound`, and report failure
+  otherwise without touching the stored item. The update/add/fail decision lives in
+  `KeyStoreMutationRoute`, which the tests execute directly, and no route deletes.
+- **Remove key left stale numbers in one case.** Removal now invalidates pending requests and clears
+  the cached balance after a successful delete *or* `errSecItemNotFound`, even when no key was
+  loaded, because an old cached balance can exist without a stored key. A delete failure changes
+  nothing and reports the failure.
 
 ## Changed
 

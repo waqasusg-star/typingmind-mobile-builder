@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Tests exercise the keychain mutation routing (update/add/fail, never delete) and removal with an already-missing key and an old cached balance.",
+  "description": "Changelog documents the non-destructive keychain write and the removal invalidation rule.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
