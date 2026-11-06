@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Dashboard balance requests carry an account ticket, discard late responses for a changed account, and cancel on key change.",
+  "description": "Correct the stale-boundary expectation and add executed checks for the registered deep link, bounded timeline planner, account generation policy and badge labels.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
