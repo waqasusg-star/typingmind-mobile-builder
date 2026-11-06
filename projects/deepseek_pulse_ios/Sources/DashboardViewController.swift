@@ -9,14 +9,14 @@ final class DashboardViewController: UIViewController {
 
     private let scrollView = UIScrollView()
     private let contentStack = UIStackView()
-    private let widgetCard = WidgetCardView()
+    private let widgetCard = WidgetCardView(frame: .zero)
     private let windowCard = CardView()
-    private let timelineView = DayTimelineView()
+    private let timelineView = DayTimelineView(frame: .zero)
     private let windowCaption = Labels.caption("")
     private let outlookCard = CardView()
     private let outlookStack = UIStackView()
     private let ratesCard = CardView()
-    private let ratesTable = RateTableView()
+    private let ratesTable = RateTableView(frame: .zero)
     private let ratesCaption = Labels.caption("")
     private let messageCard = CardView()
     private let messageLabel = Labels.body("")
@@ -100,13 +100,13 @@ final class DashboardViewController: UIViewController {
         windowCard.content.addArrangedSubview(timelineView)
 
         let legend = UIStackView(arrangedSubviews: [
-            legendItem(title: "Peak (standard price)", color: AppColors.peak),
-            legendItem(title: "Off-peak (discount)", color: AppColors.offPeak),
-            legendItem(title: "Standard only", color: AppColors.textDim)
+            legendItem(title: "Peak", color: AppColors.peak),
+            legendItem(title: "Off-peak", color: AppColors.offPeak),
+            legendItem(title: "Standard", color: AppColors.textDim)
         ])
         legend.axis = .horizontal
-        legend.spacing = 12
-        legend.distribution = .fillProportionally
+        legend.spacing = 10
+        legend.distribution = .fillEqually
         windowCard.content.addArrangedSubview(legend)
         windowCard.content.addArrangedSubview(windowCaption)
         contentStack.addArrangedSubview(windowCard)
@@ -123,18 +123,18 @@ final class DashboardViewController: UIViewController {
         contentStack.addArrangedSubview(ratesCard)
 
         pricingButton.setTitle("Open official DeepSeek pricing page", for: .normal)
-        pricingButton.titleLabel?.font = Typography.scaled(14, .semibold, style: .subheadline)
+        pricingButton.titleLabel?.font = Typography.scaled(14, UIFont.Weight.semibold, style: .subheadline)
         pricingButton.setTitleColor(AppColors.accentSoft, for: .normal)
         pricingButton.contentHorizontalAlignment = .leading
         pricingButton.addTarget(self, action: #selector(openPricingPage), for: .touchUpInside)
         contentStack.addArrangedSubview(pricingButton)
 
-        let footer = Labels.caption("Version \(appVersion). Schedule and prices are stored on this iPhone and are not downloaded; they were verified by hand on \(RateSeeds.verifiedAsOf). Balance is read from api.deepseek.com/user/balance with your own API key.")
+        let footer = Labels.caption("Version " + appVersion + ". Prices, the peak windows and the PRC holiday list are stored on this iPhone and are not downloaded; they were verified by hand on " + RateSeeds.verifiedAsOf + ". Balance is read from api.deepseek.com/user/balance with your own API key.")
         contentStack.addArrangedSubview(footer)
     }
 
     private func legendItem(title: String, color: UIColor) -> UIView {
-        let dot = UIView()
+        let dot = UIView(frame: .zero)
         dot.backgroundColor = color
         dot.layer.cornerRadius = 4
         dot.translatesAutoresizingMaskIntoConstraints = false
@@ -143,9 +143,8 @@ final class DashboardViewController: UIViewController {
 
         let label = UILabel()
         label.text = title
-        label.font = Typography.scaled(10, .semibold, style: .caption2)
+        label.font = Typography.scaled(10, UIFont.Weight.semibold, style: .caption2)
         label.textColor = AppColors.textDim
-        label.numberOfLines = 2
 
         let stack = UIStackView(arrangedSubviews: [dot, label])
         stack.axis = .horizontal
@@ -158,19 +157,19 @@ final class DashboardViewController: UIViewController {
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "1.0.1"
         let build = info?["CFBundleVersion"] as? String ?? "2"
-        return "\(version) (\(build))"
+        return version + " (" + build + ")"
     }
 
     // MARK: - Clock
 
     private func startClock() {
         timer?.invalidate()
-        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+        let clock = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.render()
         }
-        timer.tolerance = 0.15
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
+        clock.tolerance = 0.15
+        RunLoop.main.add(clock, forMode: .common)
+        timer = clock
     }
 
     // MARK: - Rendering
@@ -187,10 +186,13 @@ final class DashboardViewController: UIViewController {
         windowCaption.text = makeScheduleCaption(schedule: schedule, models: store.models, now: now)
         rebuildOutlook(schedule: schedule, now: now)
 
-        let modelSignature = store.models.map {
-            "\($0.id):\($0.label):\($0.standard.cacheHit):\($0.standard.cacheMiss):\($0.standard.output):\($0.offPeakDiscountPercent)"
-        }.joined(separator: ",")
-        let signature = "\(state.rawValue)|\(schedule.discountsEnabled)|\(modelSignature)"
+        var signature = state.rawValue
+        signature += "|" + String(schedule.discountsEnabled)
+        for model in store.models {
+            signature += "|" + model.id + ":" + model.label + ":" + String(model.standard.cacheHit)
+                + ":" + String(model.standard.cacheMiss) + ":" + String(model.standard.output)
+                + ":" + String(model.offPeakDiscountPercent)
+        }
         if signature != lastRateSignature {
             lastRateSignature = signature
             ratesTable.update(models: store.models,
@@ -209,10 +211,12 @@ final class DashboardViewController: UIViewController {
         var content = WidgetContent()
         content.hasKey = store.hasAPIKey
         content.stateText = state.label
-        switch state {
-        case .peak: content.stateColor = AppColors.peak
-        case .offPeak: content.stateColor = AppColors.offPeak
-        case .standard: content.stateColor = AppColors.textDim
+        if state == .peak {
+            content.stateColor = AppColors.peak
+        } else if state == .offPeak {
+            content.stateColor = AppColors.offPeak
+        } else {
+            content.stateColor = AppColors.textDim
         }
 
         if let info = snapshot?.primary {
@@ -221,11 +225,16 @@ final class DashboardViewController: UIViewController {
             content.granted = MoneyFormat.amount(info.grantedBalance, currency: info.currency)
             content.toppedUp = MoneyFormat.amount(info.toppedUpBalance, currency: info.currency)
             let available = snapshot?.isAvailable ?? false
-            content.availabilityText = available
-                ? "\(info.currency) · available for API calls"
-                : "\(info.currency) · account not available — check balance and plan"
-            content.availabilityColor = available ? AppColors.offPeak : AppColors.danger
-            content.updatedLine = snapshot.map { "Balance updated " + ClockFormat.relative($0.fetchedAt, now: now) } ?? ""
+            if available {
+                content.availabilityText = info.currency + " · available for API calls"
+                content.availabilityColor = AppColors.offPeak
+            } else {
+                content.availabilityText = info.currency + " · account not available — check balance and plan"
+                content.availabilityColor = AppColors.danger
+            }
+            if let snapshot = snapshot {
+                content.updatedLine = "Balance updated " + ClockFormat.relative(snapshot.fetchedAt, now: now)
+            }
         } else if store.hasAPIKey {
             content.totalAmount = "—"
             content.availabilityText = "Pull to refresh to load your balance."
@@ -240,7 +249,7 @@ final class DashboardViewController: UIViewController {
 
         content.detailLine = countdownLine(schedule: schedule, now: now)
         content.noteLine = notesLine(schedule: schedule, store: store, now: now)
-        content.clockLine = "Now \(ClockFormat.utcTimeLabel(now)) · \(ClockFormat.localTimeLabel(now)) local"
+        content.clockLine = "Now " + ClockFormat.utcTimeLabel(now) + " · " + ClockFormat.localTimeLabel(now) + " local"
         return content
     }
 
@@ -252,36 +261,47 @@ final class DashboardViewController: UIViewController {
             return "No peak window is configured, so every hour is off-peak."
         }
         let seconds = max(0, Int(next.date.timeIntervalSince(now).rounded()))
-        let what = next.becomesPeak ? "Peak starts" : "Off-peak starts"
-        let dayTag = next.daysAhead == 0 ? "today" : (next.daysAhead == 1 ? "tomorrow" : "in \(next.daysAhead) days")
-        return "\(what) \(ClockFormat.utcStamp(next.date)) (\(ClockFormat.localStamp(next.date)) local · \(dayTag)) — in \(ClockFormat.countdown(seconds: seconds))"
+        var what = "Off-peak starts"
+        if next.becomesPeak { what = "Peak starts" }
+        var dayTag = "in " + String(next.daysAhead) + " days"
+        if next.daysAhead == 0 { dayTag = "today" }
+        if next.daysAhead == 1 { dayTag = "tomorrow" }
+        return what + " " + ClockFormat.utcStamp(next.date)
+            + " (" + ClockFormat.localStamp(next.date) + " local · " + dayTag + ")"
+            + " — in " + ClockFormat.countdown(seconds: seconds)
     }
 
     private func notesLine(schedule: PricingSchedule, store: SettingsStore, now: Date) -> String {
         var notes: [String] = []
-        let outsideCheckedRange = schedule.holidays.coverageStart != nil
-        let reason = outsideCheckedRange ? "outside the checked holiday range" : "holiday calendar not on file"
-
         if schedule.isUncertain(at: now) {
-            notes.append("Weekday peaks assume no PRC public holiday today (\(reason)).")
-        } else if let next = schedule.nextTransition(after: now), next.uncertain {
-            notes.append("Countdown assumes \(PricingSchedule.dayKey(next.date)) is not a PRC public holiday (\(reason)).")
+            notes.append("Today is a weekday, so the peak windows assume no PRC public holiday (" + schedule.holidays.summary + ").")
+        } else if let next = schedule.nextTransition(after: now) {
+            if next.uncertain {
+                notes.append("Countdown assumes " + PricingSchedule.dayKey(next.date) + " is not a PRC public holiday.")
+            }
+        }
+        if let warning = schedule.calendarWarning(at: now) {
+            notes.append(warning)
         }
         if store.scheduleIsCustom {
-            notes.append("Custom schedule — the official windows were verified \(RateSeeds.verifiedAsOf).")
+            notes.append("Custom schedule — the official windows were verified " + RateSeeds.verifiedAsOf + ".")
         }
         return notes.joined(separator: " ")
     }
 
     private func makeScheduleCaption(schedule: PricingSchedule, models: [ModelRate], now: Date) -> String {
         guard schedule.discountsEnabled else {
-            return "Off-peak discounts are switched off, so one standard price applies around the clock. Holiday data: \(schedule.holidays.summary)."
+            return "Off-peak discounts are switched off, so one standard price applies around the clock. Holidays: " + schedule.holidays.summary + "."
         }
-        let discounts = models.map { "\($0.name) \(Int($0.clampedDiscount.rounded()))%" }.joined(separator: " · ")
+        var discounts: [String] = []
+        for model in models {
+            discounts.append(model.name + " " + String(Int(model.clampedDiscount.rounded())) + "%")
+        }
         var parts: [String] = [
-            "Peak \(schedule.weekdaySummary) \(schedule.intervalSummaryUTC)",
-            "your local time \(schedule.intervalSummaryLocal(on: now))",
-            "off-peak \(discounts) off"
+            "Peak " + schedule.weekdaySummary + " " + schedule.intervalSummaryUTC,
+            "your local time " + schedule.intervalSummaryLocal(on: now),
+            "off-peak " + discounts.joined(separator: " · ") + " off",
+            "all weekends are off-peak"
         ]
         let day = schedule.daySchedule(for: now)
         if day.kind == .holiday {
@@ -289,23 +309,23 @@ final class DashboardViewController: UIViewController {
         } else if day.intervals.isEmpty {
             parts.append("today has no peak window → off-peak all day")
         }
-        parts.append("holidays: \(schedule.holidays.summary)")
+        parts.append("holidays: " + schedule.holidays.summary)
         return parts.joined(separator: " · ")
     }
 
     private func makeRatesCaption(schedule: PricingSchedule, state: PricingState, store: SettingsStore) -> String {
-        var text: String
-        switch state {
-        case .offPeak: text = "Off-peak prices are active now, so the OFF-PEAK column is highlighted."
-        case .peak: text = "Peak (standard) prices are active now, so the PEAK column is highlighted."
-        case .standard: text = "The off-peak column is inactive because the discount schedule is switched off."
+        var text = "Peak (standard) prices are active now, so the PEAK column is highlighted."
+        if state == .offPeak {
+            text = "Off-peak prices are active now, so the OFF-PEAK column is highlighted."
+        } else if state == .standard {
+            text = "The off-peak column is inactive because the discount schedule is switched off."
         }
         if store.ratesAreCustom {
             text += " These rates are your custom values, not the verified defaults."
         } else {
-            text += " Verified by hand on \(RateSeeds.verifiedAsOf); the app does not download prices."
+            text += " Verified by hand on " + RateSeeds.verifiedAsOf + "; the app does not download prices."
         }
-        text += " Source: \(schedule.sourceURL)"
+        text += " Source: " + schedule.sourceURL
         return text
     }
 
@@ -314,31 +334,46 @@ final class DashboardViewController: UIViewController {
             outlookStack.removeArrangedSubview(view)
             view.removeFromSuperview()
         }
-        for (offset, day) in schedule.outlook(from: now, days: 7).enumerated() {
+        let days = schedule.outlook(from: now, days: 7)
+        var offset = 0
+        for day in days {
             outlookStack.addArrangedSubview(outlookRow(day: day, offset: offset, schedule: schedule, now: now))
+            offset += 1
         }
     }
 
     private func outlookRow(day: DaySchedule, offset: Int, schedule: PricingSchedule, now: Date) -> UIView {
         let dayLabel = UILabel()
         let date = PricingSchedule.date(fromDayKey: day.key) ?? now
-        dayLabel.text = ClockFormat.utcDayLabel(date) + (offset == 0 ? " · today" : "")
-        dayLabel.font = Typography.scaled(12, .semibold, style: .footnote)
+        var label = ClockFormat.utcDayLabel(date)
+        if offset == 0 { label += " · today" }
+        dayLabel.text = label
+        dayLabel.font = Typography.scaled(12, UIFont.Weight.semibold, style: .footnote)
         dayLabel.textColor = AppColors.text
-        dayLabel.widthAnchor.constraint(equalToConstant: 108).isActive = true
+        dayLabel.widthAnchor.constraint(equalToConstant: 110).isActive = true
 
         let detail = UILabel()
-        detail.font = Typography.scaled(11.5, .medium, style: .caption1)
+        detail.font = Typography.scaled(11.5, UIFont.Weight.medium, style: .caption1)
         detail.numberOfLines = 0
         if !schedule.discountsEnabled {
             detail.text = "standard all day"
             detail.textColor = AppColors.textDim
         } else if day.intervals.isEmpty {
-            detail.text = day.kind == .holiday ? "PRC public holiday · off-peak" : "off-peak all day"
-            detail.textColor = day.kind == .holiday ? AppColors.offPeak : AppColors.textDim
+            if day.kind == .holiday {
+                detail.text = "PRC public holiday · off-peak"
+                detail.textColor = AppColors.offPeak
+            } else {
+                detail.text = "off-peak all day"
+                detail.textColor = AppColors.textDim
+            }
         } else {
-            let windows = day.intervals.map { $0.utcLabel }.joined(separator: ", ")
-            detail.text = windows + " UTC" + (day.kind == .unverified ? " · unverified" : "")
+            var windows: [String] = []
+            for interval in day.intervals {
+                windows.append(interval.utcLabel)
+            }
+            var text = windows.joined(separator: ", ") + " UTC"
+            if day.kind == .unverified { text += " · unverified" }
+            detail.text = text
             detail.textColor = AppColors.peak
         }
 
@@ -352,7 +387,7 @@ final class DashboardViewController: UIViewController {
     // MARK: - Actions
 
     @objc private func refreshTapped() {
-        refresh(force: true)
+        refresh()
     }
 
     @objc private func settingsTapped() {
@@ -361,7 +396,7 @@ final class DashboardViewController: UIViewController {
             guard let self = self else { return }
             self.lastRateSignature = ""
             self.render()
-            self.refresh(force: true)
+            self.refresh()
         }
         let navigation = UINavigationController(rootViewController: controller)
         navigation.modalPresentationStyle = .formSheet
@@ -375,7 +410,6 @@ final class DashboardViewController: UIViewController {
 
     @objc private func openPricingPage() {
         let target = URL(string: SettingsStore.shared.schedule.sourceURL)
-            ?? URL(string: "https://api-docs.deepseek.com/quick_start/pricing/")
         guard let url = target else { return }
         UIApplication.shared.open(url)
     }
@@ -386,14 +420,16 @@ final class DashboardViewController: UIViewController {
             showMessage("Add your DeepSeek API key in Settings to load your account balance.", tone: .neutral)
             return
         }
-        if let snapshot = store.cachedSnapshot, Date().timeIntervalSince(snapshot.fetchedAt) < 120 {
-            showMessage(nil, tone: .neutral)
-            return
+        if let snapshot = store.cachedSnapshot {
+            if Date().timeIntervalSince(snapshot.fetchedAt) < 120 {
+                showMessage(nil, tone: .neutral)
+                return
+            }
         }
-        refresh(force: false)
+        refresh()
     }
 
-    private func refresh(force: Bool) {
+    private func refresh() {
         guard !isLoading else { return }
         let key = SettingsStore.shared.apiKey
         guard !key.isEmpty else {
@@ -420,12 +456,20 @@ final class DashboardViewController: UIViewController {
     }
 
     private func showMessage(_ text: String?, tone: MessageTone) {
-        guard let text = text, !text.isEmpty else {
+        guard let text = text else {
+            messageCard.isHidden = true
+            return
+        }
+        if text.isEmpty {
             messageCard.isHidden = true
             return
         }
         messageLabel.text = text
-        messageLabel.textColor = tone == .warning ? AppColors.danger : AppColors.textDim
+        if tone == .warning {
+            messageLabel.textColor = AppColors.danger
+        } else {
+            messageLabel.textColor = AppColors.textDim
+        }
         messageCard.isHidden = false
     }
 }

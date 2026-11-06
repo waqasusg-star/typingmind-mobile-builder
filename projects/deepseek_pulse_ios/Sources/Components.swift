@@ -36,8 +36,8 @@ final class PillView: UIView {
         super.init(frame: frame)
         layer.cornerRadius = 11
         layer.cornerCurve = .continuous
-        label.font = Typography.scaled(11, .bold, style: .caption1)
-        label.textColor = .white
+        label.font = Typography.scaled(11, UIFont.Weight.bold, style: .caption1)
+        label.textColor = UIColor.white
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
         NSLayoutConstraint.activate([
@@ -64,6 +64,22 @@ final class PaddedTextField: UITextField {
 
     var insets = UIEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
 
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = AppColors.surfaceElevated
+        layer.cornerRadius = 10
+        layer.cornerCurve = .continuous
+        textColor = AppColors.text
+        tintColor = AppColors.accentSoft
+        font = Typography.scaled(14, UIFont.Weight.medium, style: .subheadline)
+        autocapitalizationType = .none
+        autocorrectionType = .no
+        spellCheckingType = .no
+        clearButtonMode = .whileEditing
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
     override func textRect(forBounds bounds: CGRect) -> CGRect { bounds.inset(by: insets) }
     override func editingRect(forBounds bounds: CGRect) -> CGRect { bounds.inset(by: insets) }
     override func placeholderRect(forBounds bounds: CGRect) -> CGRect { bounds.inset(by: insets) }
@@ -80,11 +96,11 @@ struct WidgetContent {
     var totalAmount = "—"
     var currencyCode = ""
     var availabilityText = ""
-    var availabilityColor = AppColors.textDim
+    var availabilityColor: UIColor = AppColors.textDim
     var granted = "—"
     var toppedUp = "—"
     var stateText = "STANDARD"
-    var stateColor = AppColors.textDim
+    var stateColor: UIColor = AppColors.textDim
     var detailLine = ""
     var noteLine = ""
     var clockLine = ""
@@ -95,7 +111,7 @@ final class WidgetCardView: UIView {
 
     private let gradient = CAGradientLayer()
     private let brandLabel = UILabel()
-    private let pill = PillView()
+    private let pill = PillView(frame: .zero)
     private let totalLabel = UILabel()
     private let availabilityLabel = UILabel()
     private let grantedBox = StatBoxView(title: "Granted")
@@ -124,32 +140,31 @@ final class WidgetCardView: UIView {
         layer.insertSublayer(gradient, at: 0)
 
         brandLabel.text = "DEEPSEEK API"
-        brandLabel.font = Typography.scaled(11, .bold, style: .caption1)
+        brandLabel.font = Typography.scaled(11, UIFont.Weight.bold, style: .caption1)
         brandLabel.textColor = UIColor.white.withAlphaComponent(0.85)
 
-        totalLabel.font = Typography.digits(38, .bold)
-        totalLabel.textColor = .white
+        totalLabel.font = Typography.digits(38, UIFont.Weight.bold)
+        totalLabel.textColor = UIColor.white
         totalLabel.adjustsFontSizeToFitWidth = true
         totalLabel.minimumScaleFactor = 0.55
         totalLabel.numberOfLines = 1
-        totalLabel.accessibilityLabel = "Account balance"
 
-        availabilityLabel.font = Typography.scaled(12, .semibold, style: .footnote)
+        availabilityLabel.font = Typography.scaled(12, UIFont.Weight.semibold, style: .footnote)
         availabilityLabel.numberOfLines = 0
 
-        detailLabel.font = Typography.scaled(13, .semibold, style: .subheadline)
+        detailLabel.font = Typography.scaled(13, UIFont.Weight.semibold, style: .subheadline)
         detailLabel.textColor = UIColor.white.withAlphaComponent(0.94)
         detailLabel.numberOfLines = 0
 
-        noteLabel.font = Typography.scaled(11, .medium, style: .caption1)
+        noteLabel.font = Typography.scaled(11, UIFont.Weight.medium, style: .caption1)
         noteLabel.textColor = UIColor(hex: 0xFFC46B)
         noteLabel.numberOfLines = 0
 
-        clockLabel.font = Typography.scaled(11, .medium, style: .caption1)
+        clockLabel.font = Typography.scaled(11, UIFont.Weight.medium, style: .caption1)
         clockLabel.textColor = UIColor.white.withAlphaComponent(0.68)
         clockLabel.numberOfLines = 0
 
-        updatedLabel.font = Typography.scaled(11, .medium, style: .caption1)
+        updatedLabel.font = Typography.scaled(11, UIFont.Weight.medium, style: .caption1)
         updatedLabel.textColor = UIColor.white.withAlphaComponent(0.55)
         updatedLabel.numberOfLines = 0
 
@@ -163,7 +178,7 @@ final class WidgetCardView: UIView {
         statsRow.distribution = .fillEqually
         statsRow.spacing = 10
 
-        let separator = UIView()
+        let separator = UIView(frame: .zero)
         separator.backgroundColor = UIColor.white.withAlphaComponent(0.16)
         separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
 
@@ -224,11 +239,11 @@ final class StatBoxView: UIView {
         layer.cornerCurve = .continuous
 
         titleLabel.text = title.uppercased()
-        titleLabel.font = Typography.scaled(10, .bold, style: .caption2)
+        titleLabel.font = Typography.scaled(10, UIFont.Weight.bold, style: .caption2)
         titleLabel.textColor = UIColor.white.withAlphaComponent(0.62)
 
-        valueLabel.font = Typography.digits(15, .semibold)
-        valueLabel.textColor = .white
+        valueLabel.font = Typography.digits(15, UIFont.Weight.semibold)
+        valueLabel.textColor = UIColor.white
         valueLabel.adjustsFontSizeToFitWidth = true
         valueLabel.minimumScaleFactor = 0.7
 
@@ -262,7 +277,7 @@ final class DayTimelineView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = .clear
+        backgroundColor = UIColor.clear
         isOpaque = false
     }
 
@@ -290,15 +305,13 @@ final class DayTimelineView: UIView {
         if let context = UIGraphicsGetCurrentContext() {
             context.saveGState()
             barPath.addClip()
+            let dayLength = CGFloat(PricingSchedule.minutesPerDay)
             for segment in segments {
-                let x = barRect.minX + barRect.width * CGFloat(segment.startMinute) / CGFloat(PricingSchedule.minutesPerDay)
-                let width = barRect.width * CGFloat(segment.endMinute - segment.startMinute) / CGFloat(PricingSchedule.minutesPerDay)
-                let alpha: CGFloat
-                switch segment.state {
-                case .peak: alpha = 0.75
-                case .offPeak: alpha = 0.9
-                case .standard: alpha = 0.45
-                }
+                let x = barRect.minX + barRect.width * CGFloat(segment.startMinute) / dayLength
+                let width = barRect.width * CGFloat(segment.endMinute - segment.startMinute) / dayLength
+                var alpha: CGFloat = 0.45
+                if segment.state == .peak { alpha = 0.75 }
+                if segment.state == .offPeak { alpha = 0.9 }
                 DayTimelineView.color(for: segment.state).withAlphaComponent(alpha).setFill()
                 context.fill(CGRect(x: x, y: barRect.minY, width: width, height: barRect.height))
             }
@@ -318,13 +331,15 @@ final class DayTimelineView: UIView {
             .font: UIFont.systemFont(ofSize: 10, weight: .medium),
             .foregroundColor: AppColors.textDim
         ]
-        let marks: [(String, CGFloat)] = [("00", 0), ("06", 0.25), ("12", 0.5), ("18", 0.75), ("24", 1)]
+        let marks: [String] = ["00", "06", "12", "18", "24"]
+        let fractions: [CGFloat] = [0, 0.25, 0.5, 0.75, 1]
         let labelTop = rect.height - 14
-        for (text, fraction) in marks {
-            let size = (text as NSString).size(withAttributes: attributes)
-            var x = rect.width * fraction - size.width / 2
+        for index in 0..<marks.count {
+            let text = marks[index] as NSString
+            let size = text.size(withAttributes: attributes)
+            var x = rect.width * fractions[index] - size.width / 2
             x = min(max(x, 0), max(0, rect.width - size.width))
-            (text as NSString).draw(at: CGPoint(x: x, y: labelTop), withAttributes: attributes)
+            text.draw(at: CGPoint(x: x, y: labelTop), withAttributes: attributes)
         }
     }
 }
@@ -363,36 +378,35 @@ final class RateTableView: UIView {
 
         for (index, model) in models.enumerated() {
             if index > 0 {
-                let divider = UIView()
+                let divider = UIView(frame: .zero)
                 divider.backgroundColor = AppColors.surfaceElevated
                 divider.heightAnchor.constraint(equalToConstant: 1).isActive = true
                 stack.addArrangedSubview(divider)
             }
             let nameLabel = UILabel()
             nameLabel.text = model.displayName
-            nameLabel.font = Typography.scaled(13.5, .bold, style: .subheadline)
+            nameLabel.font = Typography.scaled(13.5, UIFont.Weight.bold, style: .subheadline)
             nameLabel.textColor = AppColors.accentSoft
             nameLabel.numberOfLines = 0
             stack.addArrangedSubview(nameLabel)
 
-            for component in RateComponent.allCases {
-                stack.addArrangedSubview(rateRow(component: component,
-                                                 model: model,
-                                                 offPeakActive: offPeakActive,
-                                                 discountEnabled: discountEnabled))
-            }
+            stack.addArrangedSubview(rateRow(component: .cacheHit, model: model, offPeakActive: offPeakActive, discountEnabled: discountEnabled))
+            stack.addArrangedSubview(rateRow(component: .cacheMiss, model: model, offPeakActive: offPeakActive, discountEnabled: discountEnabled))
+            stack.addArrangedSubview(rateRow(component: .output, model: model, offPeakActive: offPeakActive, discountEnabled: discountEnabled))
         }
     }
 
     private func headerRow(offPeakActive: Bool, discountEnabled: Bool) -> UIView {
         let blank = UILabel()
         blank.text = "USD / 1M tokens"
-        blank.font = Typography.scaled(10, .semibold, style: .caption2)
+        blank.font = Typography.scaled(10, UIFont.Weight.semibold, style: .caption2)
         blank.textColor = AppColors.textDim
 
-        let peak = columnLabel("PEAK", active: discountEnabled && !offPeakActive, color: AppColors.peak)
-        let offPeak = columnLabel("OFF-PEAK", active: discountEnabled && offPeakActive, color: AppColors.offPeak)
-        offPeak.alpha = discountEnabled ? 1.0 : 0.4
+        let peakActive = discountEnabled && !offPeakActive
+        let offPeakActiveColumn = discountEnabled && offPeakActive
+        let peak = columnLabel("PEAK", active: peakActive, color: AppColors.peak)
+        let offPeak = columnLabel("OFF-PEAK", active: offPeakActiveColumn, color: AppColors.offPeak)
+        if !discountEnabled { offPeak.alpha = 0.4 }
 
         return assemble([blank, peak, offPeak])
     }
@@ -400,15 +414,15 @@ final class RateTableView: UIView {
     private func rateRow(component: RateComponent, model: ModelRate, offPeakActive: Bool, discountEnabled: Bool) -> UIView {
         let title = UILabel()
         title.text = component.title
-        title.font = Typography.scaled(12, .medium, style: .footnote)
+        title.font = Typography.scaled(12, UIFont.Weight.medium, style: .footnote)
         title.textColor = AppColors.textDim
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let peakValue = MoneyFormat.rate(component.value(in: model.standard))
-        let offPeakValue = MoneyFormat.rate(component.value(in: model.offPeak))
-
-        let peak = columnLabel(peakValue, active: discountEnabled && !offPeakActive, color: AppColors.text)
-        let offPeak = columnLabel(discountEnabled ? offPeakValue : "—", active: discountEnabled && offPeakActive, color: AppColors.text)
+        let peakActive = discountEnabled && !offPeakActive
+        let offPeakActiveColumn = discountEnabled && offPeakActive
+        let peak = columnLabel(MoneyFormat.rate(component.value(in: model.standard)), active: peakActive, color: AppColors.text)
+        let discounted = discountEnabled ? MoneyFormat.rate(component.value(in: model.offPeak)) : "—"
+        let offPeak = columnLabel(discounted, active: offPeakActiveColumn, color: AppColors.text)
 
         return assemble([title, peak, offPeak])
     }
@@ -416,7 +430,9 @@ final class RateTableView: UIView {
     private func columnLabel(_ text: String, active: Bool, color: UIColor) -> UILabel {
         let label = UILabel()
         label.text = text
-        label.font = Typography.digits(active ? 13 : 12.5, active ? .bold : .medium)
+        let size: CGFloat = active ? 13.0 : 12.5
+        let weight: UIFont.Weight = active ? UIFont.Weight.bold : UIFont.Weight.medium
+        label.font = Typography.digits(size, weight)
         label.textColor = active ? color : AppColors.textDim
         label.textAlignment = .right
         label.widthAnchor.constraint(equalToConstant: valueWidth).isActive = true

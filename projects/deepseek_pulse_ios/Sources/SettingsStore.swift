@@ -7,18 +7,20 @@ extension Notification.Name {
 final class SettingsStore {
 
     static let shared = SettingsStore()
-    static let currentSchema = 2
+    static let currentSchema = 3
 
     private enum Key {
         static let schema = "deepseekpulse.schema"
-        static let schedule = "deepseekpulse.schedule.v2"
-        static let models = "deepseekpulse.models.v2"
-        static let ratesCustom = "deepseekpulse.ratesCustom.v2"
-        static let scheduleCustom = "deepseekpulse.scheduleCustom.v2"
+        static let schedule = "deepseekpulse.schedule.v3"
+        static let models = "deepseekpulse.models.v3"
+        static let ratesCustom = "deepseekpulse.ratesCustom.v3"
+        static let scheduleCustom = "deepseekpulse.scheduleCustom.v3"
         static let snapshot = "deepseekpulse.snapshot.v1"
-        static let migrationNotice = "deepseekpulse.migrationNotice.v2"
+        static let migrationNotice = "deepseekpulse.migrationNotice.v3"
         static let legacyWindow = "deepseekpulse.window.v1"
         static let legacyModels = "deepseekpulse.models.v1"
+        static let legacyScheduleV2 = "deepseekpulse.schedule.v2"
+        static let legacyModelsV2 = "deepseekpulse.models.v2"
     }
 
     private let defaults: UserDefaults
@@ -36,9 +38,8 @@ final class SettingsStore {
         let storedModels = SettingsStore.read([ModelRate].self, key: Key.models, defaults: defaults)
 
         if storedSchema < SettingsStore.currentSchema {
-            // 1.0.0 stored a single 16:30–00:30 UTC window and deepseek-chat/deepseek-reasoner
-            // prices with a 75% reasoner discount. DeepSeek no longer publishes either, so the
-            // obsolete settings are dropped instead of being shown as current.
+            // 1.0.0 stored a single 16:30–00:30 UTC window and retired deepseek-chat / reasoner
+            // prices. Those values are dropped instead of being shown as current.
             self.schedule = RateSeeds.schedule
             self.models = RateSeeds.models
             self.ratesAreCustom = false
@@ -46,6 +47,8 @@ final class SettingsStore {
 
             defaults.removeObject(forKey: Key.legacyWindow)
             defaults.removeObject(forKey: Key.legacyModels)
+            defaults.removeObject(forKey: Key.legacyScheduleV2)
+            defaults.removeObject(forKey: Key.legacyModelsV2)
             SettingsStore.write(self.schedule, key: Key.schedule, defaults: defaults)
             SettingsStore.write(self.models, key: Key.models, defaults: defaults)
             defaults.set(false, forKey: Key.ratesCustom)
@@ -56,7 +59,8 @@ final class SettingsStore {
             }
         } else {
             self.schedule = storedSchedule ?? RateSeeds.schedule
-            self.models = (storedModels?.isEmpty == false) ? (storedModels ?? RateSeeds.models) : RateSeeds.models
+            let stored = storedModels ?? []
+            self.models = stored.isEmpty ? RateSeeds.models : stored
             self.ratesAreCustom = defaults.bool(forKey: Key.ratesCustom)
             self.scheduleIsCustom = defaults.bool(forKey: Key.scheduleCustom)
         }
@@ -89,11 +93,9 @@ final class SettingsStore {
         defaults.set(isCustom, forKey: Key.ratesCustom)
     }
 
-    /// Restores the verified schedule but keeps explicit PRC holiday overrides the user typed in.
+    /// Restores the verified schedule together with the verified 2026–2027 holiday list.
     func resetScheduleToOfficial() {
-        var official = RateSeeds.schedule
-        official.holidays = schedule.holidays
-        saveSchedule(official, isCustom: false)
+        saveSchedule(RateSeeds.schedule, isCustom: false)
     }
 
     func resetModelsToOfficial() {

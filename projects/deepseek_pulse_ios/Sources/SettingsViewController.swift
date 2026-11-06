@@ -4,10 +4,10 @@ final class SettingsViewController: UIViewController {
 
     private let scrollView = UIScrollView()
     private let stack = UIStackView()
-    private let keyField = PaddedTextField()
+    private let keyField = PaddedTextField(frame: .zero)
     private let scheduleSwitch = UISwitch()
-    private let coverageStartField = PaddedTextField()
-    private let coverageEndField = PaddedTextField()
+    private let coverageStartField = PaddedTextField(frame: .zero)
+    private let coverageEndField = PaddedTextField(frame: .zero)
     private let holidayDatePicker = UIDatePicker()
     private let holidayListStack = UIStackView()
     private let holidayNoteLabel = Labels.caption("")
@@ -20,6 +20,7 @@ final class SettingsViewController: UIViewController {
 
     private var peakDays: Set<Int> = []
     private var holidays: Set<String> = []
+    private var holidaysExpanded = false
 
     var onSaved: (() -> Void)?
 
@@ -67,8 +68,8 @@ final class SettingsViewController: UIViewController {
 
         if SettingsStore.shared.migrationNoticePending {
             let migrationCard = CardView()
-            migrationCard.content.addArrangedSubview(Labels.title("Upgraded from 1.0.0"))
-            migrationCard.content.addArrangedSubview(Labels.caption("The old 16:30–00:30 UTC window and the retired deepseek-chat / deepseek-reasoner prices were removed. The schedule and prices now match the official page as checked on \(RateSeeds.verifiedAsOf)."))
+            migrationCard.content.addArrangedSubview(Labels.title("Upgraded from an earlier build"))
+            migrationCard.content.addArrangedSubview(Labels.caption("The old 16:30–00:30 UTC window and the retired deepseek-chat / deepseek-reasoner prices were removed. The schedule, prices and the 2026–2027 PRC holiday list now match the official sources checked on " + RateSeeds.verifiedAsOf + "."))
             migrationCard.content.addArrangedSubview(linkButton("Dismiss this notice", action: #selector(dismissMigrationNotice)))
             stack.addArrangedSubview(migrationCard)
         }
@@ -77,9 +78,9 @@ final class SettingsViewController: UIViewController {
         let keyCard = CardView()
         keyCard.content.addArrangedSubview(Labels.title("API key"))
         keyCard.content.addArrangedSubview(Labels.caption("Kept in the iOS Keychain on this device and sent only to api.deepseek.com/user/balance. Create or copy a key from platform.deepseek.com/api_keys."))
-        style(keyField, keyboard: .asciiCapable)
         keyField.isSecureTextEntry = true
         keyField.placeholder = "sk-…"
+        keyField.keyboardType = .asciiCapable
         keyField.heightAnchor.constraint(equalToConstant: 40).isActive = true
         keyCard.content.addArrangedSubview(keyField)
         let keyButtons = UIStackView(arrangedSubviews: [
@@ -94,7 +95,7 @@ final class SettingsViewController: UIViewController {
         // Pricing schedule
         let scheduleCard = CardView()
         scheduleCard.content.addArrangedSubview(Labels.title("Pricing schedule"))
-        scheduleCard.content.addArrangedSubview(Labels.caption("Official schedule as checked on \(RateSeeds.verifiedAsOf): peak Monday–Friday 01:00–04:00 and 06:00–10:00 UTC, excluding PRC public holidays. Every other hour, all weekends and every PRC public holiday is off-peak."))
+        scheduleCard.content.addArrangedSubview(Labels.caption("Verified on " + RateSeeds.verifiedAsOf + ": peak Monday–Friday 01:00–04:00 and 06:00–10:00 UTC, excluding PRC public holidays. Every other hour, every weekend and every PRC public holiday is off-peak."))
 
         let switchRow = UIStackView(arrangedSubviews: [bodyLabel("Apply off-peak discounts"), scheduleSwitch])
         switchRow.axis = .horizontal
@@ -111,7 +112,7 @@ final class SettingsViewController: UIViewController {
         for iso in 1...7 {
             let button = UIButton(type: .system)
             button.setTitle(PricingSchedule.weekdayShort(iso), for: .normal)
-            button.titleLabel?.font = Typography.scaled(12, .bold, style: .footnote)
+            button.titleLabel?.font = Typography.scaled(12, UIFont.Weight.bold, style: .footnote)
             button.tag = iso
             button.layer.cornerRadius = 9
             button.layer.cornerCurve = .continuous
@@ -121,34 +122,36 @@ final class SettingsViewController: UIViewController {
             dayRow.addArrangedSubview(button)
         }
         scheduleCard.content.addArrangedSubview(dayRow)
-        scheduleCard.content.addArrangedSubview(Labels.caption("Peak windows in UTC. Leave both fields of a window empty to drop it; a window must start and end on the same UTC day."))
+        scheduleCard.content.addArrangedSubview(Labels.caption("Peak windows in UTC. Leave both fields of a window empty to drop it; a window must start and end inside the same UTC day."))
 
         for index in 0..<2 {
-            let start = PaddedTextField()
-            style(start, keyboard: .numbersAndPunctuation)
-            start.placeholder = index == 0 ? "01:00" : "06:00"
-            let end = PaddedTextField()
-            style(end, keyboard: .numbersAndPunctuation)
-            end.placeholder = index == 0 ? "04:00" : "10:00"
+            let start = PaddedTextField(frame: .zero)
+            start.keyboardType = .numbersAndPunctuation
+            start.placeholder = "01:00"
+            start.inputAccessoryView = makeAccessory()
+            let end = PaddedTextField(frame: .zero)
+            end.keyboardType = .numbersAndPunctuation
+            end.placeholder = "04:00"
+            end.inputAccessoryView = makeAccessory()
             windowFields.append([start, end])
-            scheduleCard.content.addArrangedSubview(fieldRow(title: "Window \(index + 1) start (UTC)", field: start))
-            scheduleCard.content.addArrangedSubview(fieldRow(title: "Window \(index + 1) end (UTC)", field: end))
+            scheduleCard.content.addArrangedSubview(fieldRow(title: "Window " + String(index + 1) + " start (UTC)", field: start))
+            scheduleCard.content.addArrangedSubview(fieldRow(title: "Window " + String(index + 1) + " end (UTC)", field: end))
         }
 
         scheduleCard.content.addArrangedSubview(localNoteLabel)
-        scheduleCard.content.addArrangedSubview(linkButton("Restore official schedule (verified \(RateSeeds.verifiedAsOf))", action: #selector(restoreOfficialSchedule)))
+        scheduleCard.content.addArrangedSubview(linkButton("Restore official schedule and verified holidays", action: #selector(restoreOfficialSchedule)))
         stack.addArrangedSubview(scheduleCard)
 
         // PRC holidays
         let holidayCard = CardView()
         holidayCard.content.addArrangedSubview(Labels.title("PRC public holidays"))
-        holidayCard.content.addArrangedSubview(Labels.caption("No holiday list is bundled or downloaded, so the app cannot know them by itself. Add the dates you checked in the official State Council holiday notice; a listed date becomes off-peak all day. Nothing is added automatically."))
+        holidayCard.content.addArrangedSubview(Labels.caption("Verified for 2026 and 2027 from the State Council notices. The app never downloads a holiday list, so 2028 and later are reported as unverified until you add them. Chinese make-up working Saturdays and Sundays stay off-peak here, because DeepSeek charges every weekend as off-peak."))
 
         holidayDatePicker.datePickerMode = .date
         holidayDatePicker.preferredDatePickerStyle = .compact
         holidayDatePicker.timeZone = TimeZone(secondsFromGMT: 0)
         var pickerCalendar = Calendar(identifier: .gregorian)
-        pickerCalendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+        pickerCalendar.timeZone = TimeZone(secondsFromGMT: 0) ?? TimeZone.current
         holidayDatePicker.calendar = pickerCalendar
         holidayDatePicker.locale = Locale(identifier: "en_US_POSIX")
         let addRow = UIStackView(arrangedSubviews: [holidayDatePicker, linkButton("Add date", action: #selector(addHoliday))])
@@ -162,13 +165,16 @@ final class SettingsViewController: UIViewController {
         holidayCard.content.addArrangedSubview(holidayListStack)
         holidayCard.content.addArrangedSubview(holidayNoteLabel)
 
-        style(coverageStartField, keyboard: .numbersAndPunctuation)
+        coverageStartField.keyboardType = .numbersAndPunctuation
         coverageStartField.placeholder = "2026-01-01"
-        style(coverageEndField, keyboard: .numbersAndPunctuation)
-        coverageEndField.placeholder = "2026-12-31"
+        coverageStartField.inputAccessoryView = makeAccessory()
+        coverageEndField.keyboardType = .numbersAndPunctuation
+        coverageEndField.placeholder = "2027-12-31"
+        coverageEndField.inputAccessoryView = makeAccessory()
         holidayCard.content.addArrangedSubview(Labels.caption("Range you have actually checked (yyyy-MM-dd). Days inside the range count as working days unless listed; days outside it are reported as unverified."))
         holidayCard.content.addArrangedSubview(fieldRow(title: "Checked from", field: coverageStartField))
         holidayCard.content.addArrangedSubview(fieldRow(title: "Checked to", field: coverageEndField))
+        holidayCard.content.addArrangedSubview(linkButton("Open the official PRC holiday notice", action: #selector(openHolidaySource)))
         holidayCard.content.addArrangedSubview(linkButton("Clear all holiday dates", action: #selector(clearHolidays)))
         stack.addArrangedSubview(holidayCard)
 
@@ -179,24 +185,26 @@ final class SettingsViewController: UIViewController {
         for model in SettingsStore.shared.models {
             let nameLabel = UILabel()
             nameLabel.text = model.displayName
-            nameLabel.font = Typography.scaled(13.5, .bold, style: .subheadline)
+            nameLabel.font = Typography.scaled(13.5, UIFont.Weight.bold, style: .subheadline)
             nameLabel.textColor = AppColors.accentSoft
             nameLabel.numberOfLines = 0
             ratesCard.content.addArrangedSubview(nameLabel)
 
             var fields: [RateComponent: PaddedTextField] = [:]
             for component in RateComponent.allCases {
-                let field = PaddedTextField()
-                style(field, keyboard: .decimalPad)
+                let field = PaddedTextField(frame: .zero)
+                field.keyboardType = .decimalPad
                 field.placeholder = "0.00"
+                field.inputAccessoryView = makeAccessory()
                 ratesCard.content.addArrangedSubview(fieldRow(title: component.title, field: field))
                 fields[component] = field
             }
             rateFields[model.id] = fields
 
-            let discountField = PaddedTextField()
-            style(discountField, keyboard: .decimalPad)
+            let discountField = PaddedTextField(frame: .zero)
+            discountField.keyboardType = .decimalPad
             discountField.placeholder = "50"
+            discountField.inputAccessoryView = makeAccessory()
             ratesCard.content.addArrangedSubview(fieldRow(title: "Off-peak discount %", field: discountField))
             discountFields[model.id] = discountField
         }
@@ -204,7 +212,7 @@ final class SettingsViewController: UIViewController {
 
         stack.addArrangedSubview(linkButton("Reset rates to the verified defaults", action: #selector(resetRates)))
         stack.addArrangedSubview(linkButton("Open official pricing page", action: #selector(openPricingPage)))
-        stack.addArrangedSubview(Labels.caption("Source: \(RateSeeds.sourceNote). Prices are never fetched automatically; this screen is the only place they change."))
+        stack.addArrangedSubview(Labels.caption("Source: " + RateSeeds.sourceNote + ". Prices are never fetched automatically; this screen is the only place they change."))
     }
 
     private func populate() {
@@ -212,9 +220,15 @@ final class SettingsViewController: UIViewController {
         keyField.text = store.apiKey
         scheduleSwitch.isOn = store.schedule.discountsEnabled
 
-        for (index, interval) in store.schedule.sortedIntervals.prefix(2).enumerated() {
-            windowFields[index][0].text = ClockFormat.minuteLabel(interval.startMinuteUTC)
-            windowFields[index][1].text = ClockFormat.minuteLabel(interval.endMinuteUTC)
+        for index in 0..<windowFields.count {
+            if index < store.schedule.sortedIntervals.count {
+                let interval = store.schedule.sortedIntervals[index]
+                windowFields[index][0].text = ClockFormat.minuteLabel(interval.startMinuteUTC)
+                windowFields[index][1].text = ClockFormat.minuteLabel(interval.endMinuteUTC)
+            } else {
+                windowFields[index][0].text = ""
+                windowFields[index][1].text = ""
+            }
         }
         coverageStartField.text = store.schedule.holidays.coverageStart ?? ""
         coverageEndField.text = store.schedule.holidays.coverageEnd ?? ""
@@ -236,9 +250,18 @@ final class SettingsViewController: UIViewController {
     private func refreshDayButtons() {
         for button in dayButtons {
             let selected = peakDays.contains(button.tag)
-            button.backgroundColor = selected ? AppColors.accent : AppColors.surfaceElevated
-            button.setTitleColor(selected ? .white : AppColors.textDim, for: .normal)
+            if selected {
+                button.backgroundColor = AppColors.accent
+                button.setTitleColor(UIColor.white, for: .normal)
+            } else {
+                button.backgroundColor = AppColors.surfaceElevated
+                button.setTitleColor(AppColors.textDim, for: .normal)
+            }
         }
+    }
+
+    private var sortedHolidays: [String] {
+        holidays.sorted()
     }
 
     private func refreshHolidayList() {
@@ -246,43 +269,57 @@ final class SettingsViewController: UIViewController {
             holidayListStack.removeArrangedSubview(view)
             view.removeFromSuperview()
         }
-        if holidays.isEmpty {
-            let empty = Labels.caption("No holiday dates added.")
-            holidayListStack.addArrangedSubview(empty)
+
+        let sorted = sortedHolidays
+        if sorted.isEmpty {
+            holidayListStack.addArrangedSubview(Labels.caption("No holiday dates added."))
         } else {
-            for key in holidays.sorted() {
-                let label = UILabel()
-                label.text = key
-                label.font = Typography.digits(13, .medium)
-                label.textColor = AppColors.text
-
-                let remove = UIButton(type: .system)
-                remove.setTitle("Remove", for: .normal)
-                remove.titleLabel?.font = Typography.scaled(12, .semibold, style: .caption1)
-                remove.setTitleColor(AppColors.danger, for: .normal)
-                remove.addAction(UIAction { [weak self] _ in
-                    self?.holidays.remove(key)
-                    self?.refreshHolidayList()
-                }, for: .touchUpInside)
-
-                let row = UIStackView(arrangedSubviews: [label, remove])
-                row.axis = .horizontal
-                row.spacing = 12
-                row.alignment = .center
-                holidayListStack.addArrangedSubview(row)
+            let limit = holidaysExpanded ? sorted.count : 8
+            for index in 0..<min(limit, sorted.count) {
+                holidayListStack.addArrangedSubview(holidayRow(key: sorted[index], index: index))
+            }
+            if sorted.count > 8 {
+                var title = "Show all " + String(sorted.count) + " dates"
+                if holidaysExpanded { title = "Show fewer dates" }
+                holidayListStack.addArrangedSubview(linkButton(title, action: #selector(toggleHolidayExpansion)))
             }
         }
-        let summary = currentCalendarPreview().summary
-        holidayNoteLabel.text = "Calendar: \(summary)."
+
+        holidayNoteLabel.text = "Calendar: " + currentCalendarPreview().summary + "."
+    }
+
+    private func holidayRow(key: String, index: Int) -> UIView {
+        let label = UILabel()
+        label.text = key
+        label.font = Typography.digits(13, UIFont.Weight.medium)
+        label.textColor = AppColors.text
+
+        let remove = UIButton(type: .system)
+        remove.setTitle("Remove", for: .normal)
+        remove.titleLabel?.font = Typography.scaled(12, UIFont.Weight.semibold, style: .caption1)
+        remove.setTitleColor(AppColors.danger, for: .normal)
+        remove.tag = index
+        remove.addTarget(self, action: #selector(removeHolidayRow(_:)), for: .touchUpInside)
+
+        let row = UIStackView(arrangedSubviews: [label, remove])
+        row.axis = .horizontal
+        row.spacing = 12
+        row.alignment = .center
+        return row
     }
 
     private func currentCalendarPreview() -> HolidayCalendar {
         let start = trimmed(coverageStartField.text)
         let end = trimmed(coverageEndField.text)
-        return HolidayCalendar(dates: holidays,
-                               coverageStart: start.isEmpty ? nil : start,
-                               coverageEnd: end.isEmpty ? nil : end,
-                               verifiedAsOf: (start.isEmpty || end.isEmpty) ? nil : PricingSchedule.dayKey(Date()))
+        var calendar = HolidayCalendar(dates: holidays,
+                                       coverageStart: start.isEmpty ? nil : start,
+                                       coverageEnd: end.isEmpty ? nil : end,
+                                       verifiedAsOf: nil)
+        if !start.isEmpty && !end.isEmpty && start <= end {
+            calendar.verifiedAsOf = PricingSchedule.dayKey(Date())
+        }
+        calendar.source = SettingsStore.shared.schedule.holidays.source
+        return calendar
     }
 
     private func updateLocalNote() {
@@ -290,16 +327,22 @@ final class SettingsViewController: UIViewController {
         for pair in windowFields {
             let start = parseMinute(pair[0].text ?? "")
             let end = parseMinute(pair[1].text ?? "")
-            if let start = start, let end = end, start < end {
-                intervals.append(PeakInterval(startMinuteUTC: start, endMinuteUTC: end))
+            if let startMinute = start, let endMinute = end {
+                if startMinute < endMinute {
+                    intervals.append(PeakInterval(startMinuteUTC: startMinute, endMinuteUTC: endMinute))
+                }
             }
         }
-        let local = intervals.map { interval in
-            ClockFormat.localLabel(minuteUTC: interval.startMinuteUTC) + "–" + ClockFormat.localLabel(minuteUTC: interval.endMinuteUTC)
-        }.joined(separator: ", ")
-        localNoteLabel.text = local.isEmpty
-            ? "No valid window yet."
-            : "In your local time those windows are \(local). Saved on this device only."
+        var local: [String] = []
+        for interval in intervals {
+            local.append(ClockFormat.localLabel(minuteUTC: interval.startMinuteUTC)
+                         + "–" + ClockFormat.localLabel(minuteUTC: interval.endMinuteUTC))
+        }
+        if local.isEmpty {
+            localNoteLabel.text = "No valid window yet."
+        } else {
+            localNoteLabel.text = "In your local time those windows are " + local.joined(separator: ", ") + ". Saved on this device only."
+        }
     }
 
     // MARK: - Helpers
@@ -311,7 +354,7 @@ final class SettingsViewController: UIViewController {
     private func bodyLabel(_ text: String) -> UILabel {
         let label = UILabel()
         label.text = text
-        label.font = Typography.scaled(13.5, .medium, style: .subheadline)
+        label.font = Typography.scaled(13.5, UIFont.Weight.medium, style: .subheadline)
         label.textColor = AppColors.text
         label.numberOfLines = 0
         return label
@@ -320,7 +363,7 @@ final class SettingsViewController: UIViewController {
     private func fieldRow(title: String, field: UITextField) -> UIView {
         let label = UILabel()
         label.text = title
-        label.font = Typography.scaled(12.5, .medium, style: .footnote)
+        label.font = Typography.scaled(12.5, UIFont.Weight.medium, style: .footnote)
         label.textColor = AppColors.textDim
         label.numberOfLines = 0
 
@@ -333,25 +376,10 @@ final class SettingsViewController: UIViewController {
         return row
     }
 
-    private func style(_ field: PaddedTextField, keyboard: UIKeyboardType) {
-        field.backgroundColor = AppColors.surfaceElevated
-        field.layer.cornerRadius = 10
-        field.layer.cornerCurve = .continuous
-        field.textColor = AppColors.text
-        field.tintColor = AppColors.accentSoft
-        field.font = Typography.scaled(14, .medium, style: .subheadline)
-        field.keyboardType = keyboard
-        field.autocapitalizationType = .none
-        field.autocorrectionType = .no
-        field.spellCheckingType = .no
-        field.clearButtonMode = .whileEditing
-        field.inputAccessoryView = makeAccessory()
-    }
-
     private func linkButton(_ title: String, action: Selector) -> UIButton {
         let button = UIButton(type: .system)
         button.setTitle(title, for: .normal)
-        button.titleLabel?.font = Typography.scaled(13, .semibold, style: .subheadline)
+        button.titleLabel?.font = Typography.scaled(13, UIFont.Weight.semibold, style: .subheadline)
         button.titleLabel?.numberOfLines = 0
         button.setTitleColor(AppColors.accentSoft, for: .normal)
         button.contentHorizontalAlignment = .leading
@@ -418,9 +446,20 @@ final class SettingsViewController: UIViewController {
         refreshDayButtons()
     }
 
+    @objc private func toggleHolidayExpansion() {
+        holidaysExpanded = !holidaysExpanded
+        refreshHolidayList()
+    }
+
     @objc private func addHoliday() {
-        let key = PricingSchedule.dayKey(holidayDatePicker.date)
-        holidays.insert(key)
+        holidays.insert(PricingSchedule.dayKey(holidayDatePicker.date))
+        refreshHolidayList()
+    }
+
+    @objc private func removeHolidayRow(_ sender: UIButton) {
+        let sorted = sortedHolidays
+        guard sender.tag >= 0, sender.tag < sorted.count else { return }
+        holidays.remove(sorted[sender.tag])
         refreshHolidayList()
     }
 
@@ -433,16 +472,21 @@ final class SettingsViewController: UIViewController {
         let official = RateSeeds.schedule
         scheduleSwitch.isOn = official.discountsEnabled
         peakDays = official.peakWeekdays
-        for (index, pair) in windowFields.enumerated() {
+        holidays = official.holidays.dates
+        holidaysExpanded = false
+        coverageStartField.text = official.holidays.coverageStart ?? ""
+        coverageEndField.text = official.holidays.coverageEnd ?? ""
+        for index in 0..<windowFields.count {
             if index < official.sortedIntervals.count {
-                pair[0].text = ClockFormat.minuteLabel(official.sortedIntervals[index].startMinuteUTC)
-                pair[1].text = ClockFormat.minuteLabel(official.sortedIntervals[index].endMinuteUTC)
+                windowFields[index][0].text = ClockFormat.minuteLabel(official.sortedIntervals[index].startMinuteUTC)
+                windowFields[index][1].text = ClockFormat.minuteLabel(official.sortedIntervals[index].endMinuteUTC)
             } else {
-                pair[0].text = ""
-                pair[1].text = ""
+                windowFields[index][0].text = ""
+                windowFields[index][1].text = ""
             }
         }
         refreshDayButtons()
+        refreshHolidayList()
         updateLocalNote()
     }
 
@@ -471,6 +515,11 @@ final class SettingsViewController: UIViewController {
         UIApplication.shared.open(url)
     }
 
+    @objc private func openHolidaySource() {
+        guard let url = URL(string: RateSeeds.holidaySource) else { return }
+        UIApplication.shared.open(url)
+    }
+
     @objc private func openPricingPage() {
         guard let url = URL(string: RateSeeds.sourceURL) else { return }
         UIApplication.shared.open(url)
@@ -481,25 +530,25 @@ final class SettingsViewController: UIViewController {
         let store = SettingsStore.shared
 
         var intervals: [PeakInterval] = []
-        for (index, pair) in windowFields.enumerated() {
-            let startText = trimmed(pair[0].text)
-            let endText = trimmed(pair[1].text)
+        for index in 0..<windowFields.count {
+            let startText = trimmed(windowFields[index][0].text)
+            let endText = trimmed(windowFields[index][1].text)
             if startText.isEmpty && endText.isEmpty { continue }
             guard let start = parseMinute(startText), let end = parseMinute(endText) else {
-                alert("Check window \(index + 1)", "Enter both edges as HH:MM in 24-hour UTC, for example 01:00 and 04:00.")
+                alert("Check window " + String(index + 1), "Enter both edges as HH:MM in 24-hour UTC, for example 01:00 and 04:00.")
                 return
             }
             guard start < end else {
-                alert("Check window \(index + 1)", "The start must be earlier than the end; a window cannot cross midnight.")
+                alert("Check window " + String(index + 1), "The start must be earlier than the end; a window cannot cross midnight.")
                 return
             }
             intervals.append(PeakInterval(startMinuteUTC: start, endMinuteUTC: end))
         }
-        guard !intervals.isEmpty || !scheduleSwitch.isOn else {
+        if scheduleSwitch.isOn && intervals.isEmpty {
             alert("Check the schedule", "Add at least one peak window, or switch off-peak discounts off.")
             return
         }
-        guard !peakDays.isEmpty || !scheduleSwitch.isOn else {
+        if scheduleSwitch.isOn && peakDays.isEmpty {
             alert("Check the schedule", "Select at least one peak weekday, or switch off-peak discounts off.")
             return
         }
@@ -509,7 +558,7 @@ final class SettingsViewController: UIViewController {
         if !coverageStart.isEmpty || !coverageEnd.isEmpty {
             guard PricingSchedule.date(fromDayKey: coverageStart) != nil,
                   PricingSchedule.date(fromDayKey: coverageEnd) != nil else {
-                alert("Check the holiday range", "Enter both range ends as yyyy-MM-dd, for example 2026-01-01 and 2026-12-31.")
+                alert("Check the holiday range", "Enter both range ends as yyyy-MM-dd, for example 2026-01-01 and 2027-12-31.")
                 return
             }
             guard coverageStart <= coverageEnd else {
@@ -517,9 +566,11 @@ final class SettingsViewController: UIViewController {
                 return
             }
         }
-        for key in holidays where PricingSchedule.date(fromDayKey: key) == nil {
-            alert("Check the holiday dates", "\(key) is not a yyyy-MM-dd date.")
-            return
+        for key in holidays {
+            if PricingSchedule.date(fromDayKey: key) == nil {
+                alert("Check the holiday dates", key + " is not a yyyy-MM-dd date.")
+                return
+            }
         }
 
         var models: [ModelRate] = []
@@ -530,20 +581,18 @@ final class SettingsViewController: UIViewController {
                     guard let field = fields[component],
                           let value = parseNumber(field.text),
                           value >= 0 else {
-                        alert("Check the rates", "Enter a valid non-negative USD price for \(model.name) — \(component.title).")
+                        alert("Check the rates", "Enter a valid non-negative USD price for " + model.name + " — " + component.title + ".")
                         return
                     }
-                    switch component {
-                    case .cacheHit: standard.cacheHit = value
-                    case .cacheMiss: standard.cacheMiss = value
-                    case .output: standard.output = value
-                    }
+                    if component == .cacheHit { standard.cacheHit = value }
+                    if component == .cacheMiss { standard.cacheMiss = value }
+                    if component == .output { standard.output = value }
                 }
             }
             guard let discountField = discountFields[model.id],
                   let discount = parseNumber(discountField.text),
                   discount >= 0, discount <= 100 else {
-                alert("Check the discount", "Enter the off-peak discount for \(model.name) as a percentage between 0 and 100.")
+                alert("Check the discount", "Enter the off-peak discount for " + model.name + " as a percentage between 0 and 100.")
                 return
             }
             models.append(ModelRate(id: model.id,
@@ -554,21 +603,30 @@ final class SettingsViewController: UIViewController {
         }
 
         let official = RateSeeds.schedule
-        let scheduleIsCustom = scheduleSwitch.isOn != official.discountsEnabled
+        let sortedNew = intervals.sorted { $0.startMinuteUTC < $1.startMinuteUTC }
+        let isCustom = scheduleSwitch.isOn != official.discountsEnabled
             || peakDays != official.peakWeekdays
-            || intervals.sorted { $0.startMinuteUTC < $1.startMinuteUTC } != official.sortedIntervals
+            || sortedNew != official.sortedIntervals
 
+        let existing = store.schedule.holidays
+        let newStart: String? = coverageStart.isEmpty ? nil : coverageStart
+        let newEnd: String? = coverageEnd.isEmpty ? nil : coverageEnd
+        var verifiedAsOf = existing.verifiedAsOf
+        if newStart != existing.coverageStart || newEnd != existing.coverageEnd {
+            verifiedAsOf = PricingSchedule.dayKey(Date())
+        }
         let calendar = HolidayCalendar(dates: holidays,
-                                       coverageStart: coverageStart.isEmpty ? nil : coverageStart,
-                                       coverageEnd: coverageEnd.isEmpty ? nil : coverageEnd,
-                                       verifiedAsOf: (coverageStart.isEmpty || coverageEnd.isEmpty) ? nil : PricingSchedule.dayKey(Date()))
+                                       coverageStart: newStart,
+                                       coverageEnd: newEnd,
+                                       verifiedAsOf: verifiedAsOf,
+                                       source: existing.source)
 
-        let schedule = PricingSchedule(peakWeekdays: peakDays.isEmpty ? official.peakWeekdays : peakDays,
-                                       intervals: intervals.sorted { $0.startMinuteUTC < $1.startMinuteUTC },
-                                       holidays: calendar,
-                                       discountsEnabled: scheduleSwitch.isOn,
-                                       sourceURL: official.sourceURL,
-                                       verifiedAsOf: official.verifiedAsOf)
+        let updatedSchedule = PricingSchedule(peakWeekdays: peakDays.isEmpty ? official.peakWeekdays : peakDays,
+                                              intervals: sortedNew,
+                                              holidays: calendar,
+                                              discountsEnabled: scheduleSwitch.isOn,
+                                              sourceURL: official.sourceURL,
+                                              verifiedAsOf: official.verifiedAsOf)
 
         let ratesAreCustom = models != RateSeeds.models
 
@@ -580,7 +638,7 @@ final class SettingsViewController: UIViewController {
             }
         }
 
-        store.saveSchedule(schedule, isCustom: scheduleIsCustom)
+        store.saveSchedule(updatedSchedule, isCustom: isCustom)
         store.saveModels(models, isCustom: ratesAreCustom)
 
         NotificationCenter.default.post(name: .deepSeekSettingsChanged, object: nil)
