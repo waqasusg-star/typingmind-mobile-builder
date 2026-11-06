@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Changelog and README for 1.0.3 build 4 documenting the real widget, shared data, signing requirements and honest limits.",
+  "description": "Add a pure Foundation account-generation policy so stale in-flight balance responses cannot repopulate a removed or changed account.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
