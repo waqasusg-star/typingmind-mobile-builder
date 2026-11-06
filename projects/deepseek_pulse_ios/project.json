@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Provider uses a bounded timed reload policy so an ended peak window cannot persist until midnight.",
+  "description": "Add an explicit key-save result type so a failed Keychain write can never be reported as saved.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
