@@ -37,11 +37,32 @@ func expect(_ value: @autoclosure () -> Bool, _ message: String) { if !value() {
   expect(!gate.accepts(resumed, itemID: "episode", state: "queued"), "Duplicate completion cannot start another task")
   print("PASS: 24 request/path and cancellation checks; not a full app/UI/device test suite")
 
-  let now = Date(timeIntervalSince1970: 1_700_000_000)
-  expect(ProgressWritePolicy.shouldFlush(last: nil, now: now, force: false), "First progress write is immediate")
-  expect(!ProgressWritePolicy.shouldFlush(last: now.addingTimeInterval(-1), now: now, force: false), "Rapid checkpoint is coalesced")
-  expect(ProgressWritePolicy.shouldFlush(last: now.addingTimeInterval(-5), now: now, force: false), "Checkpoint after the interval is written")
-  expect(ProgressWritePolicy.shouldFlush(last: now, now: now, force: true), "Completion and favourite writes bypass the throttle")
-  print("PASS: 4 progress-write throttle checks; not a full app/UI/device test suite")
+  // Simulated playback cadence: the player checkpoints every 5 s, storage window is 15 s.
+  let base = Date(timeIntervalSince1970: 1_700_000_000)
+  var writes = 0
+  var lastWrite: Date?
+  var storedPosition = -1.0
+  var pendingPosition = 0.0
+  for step in 0...12 {
+      let now = base.addingTimeInterval(Double(step) * 5)
+      let position = Double(step) * 5
+      if ProgressWritePolicy.shouldFlush(last: lastWrite, now: now, force: false) {
+          writes += 1
+          lastWrite = now
+          storedPosition = position
+      } else {
+          pendingPosition = position
+      }
+  }
+  expect(writes == 5, "60 s of 5 s checkpoints writes 5 times instead of 13")
+  expect(storedPosition == 60, "The last written position is the newest checkpoint boundary")
+  pendingPosition = 65
+  expect(!ProgressWritePolicy.shouldFlush(last: base.addingTimeInterval(60), now: base.addingTimeInterval(65), force: false), "A checkpoint inside the 15 s window is deferred")
+  pendingPosition = 70
+  expect(ProgressWritePolicy.shouldFlush(last: base.addingTimeInterval(60), now: base.addingTimeInterval(70), force: false), "The deferred value is written at the next boundary")
+  expect(pendingPosition == 70, "The deferred value is the latest position, not the first one")
+  expect(ProgressWritePolicy.shouldFlush(last: base.addingTimeInterval(69), now: base.addingTimeInterval(70), force: true), "Pause, dismiss, seek and background flush bypass the window")
+  expect(ProgressWritePolicy.minimumInterval > 5, "The storage window is longer than the 5 s checkpoint cadence")
+  print("PASS: 6 progress-cadence checks; not a full app/UI/device test suite")
  }
 }
