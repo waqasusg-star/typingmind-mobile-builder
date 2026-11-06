@@ -5,12 +5,18 @@
   "app_name": "DeepSeek Pulse",
   "bundle_id": "com.waqas.deepseekpulse",
   "scheme": "DeepSeekPulse",
-  "version": "1.0.2",
-  "build_number": "3",
+  "version": "1.0.3",
+  "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "DeepSeek Pulse 1.0.2 (build 3): changelog and README documenting the widget work and its honest limits.",
+  "description": "DeepSeek Pulse 1.0.3 (build 4): real WidgetKit extension with shared App Group snapshot (no API key) and executed Foundation widget-cache tests.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
-  ]
+  ],
+  "widget_profile": "widgetkit_v1",
+  "widget_extension": {
+    "name": "DeepSeekPulseWidgets",
+    "bundle_id": "com.waqas.deepseekpulse.widgets",
+    "app_group_id": "group.com.waqas.deepseekpulse"
+  }
 }
