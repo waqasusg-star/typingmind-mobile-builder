@@ -291,12 +291,12 @@ final class DownloadStore: NSObject {
 extension DownloadStore: AVAssetDownloadDelegate {
 
     func urlSession(_ session: URLSession, assetDownloadTask: AVAssetDownloadTask,
-                    didLoad timeRange: CMTimeRange, totalTimeRangesLoaded loadedTimeRanges: [CMTimeRange],
+                    didLoad timeRange: CMTimeRange, totalTimeRangesLoaded loadedTimeRanges: [NSValue],
                     timeRangeExpectedToLoad: CMTimeRange) {
         guard let id = assetDownloadTask.taskDescription else { return }
         let expected = timeRangeExpectedToLoad.duration.seconds
         guard expected > 0 else { return }
-        let loaded = loadedTimeRanges.reduce(0.0) { $0 + $1.duration.seconds }
+        let loaded = loadedTimeRanges.reduce(0.0) { $0 + $1.timeRangeValue.duration.seconds }
         update(id) { entry in entry.progress = min(1, loaded / expected) }
     }
 
@@ -378,7 +378,7 @@ final class DownloadsViewController: UIViewController {
     private let resumeAll = UIButton(type: .system)
     private let wifiSwitch = UISwitch()
     private var folder: String?
-    private var observer: NSObject?
+    private var observer: NSObjectProtocol?
     private var timer: Timer?
     private var signature = ""
 

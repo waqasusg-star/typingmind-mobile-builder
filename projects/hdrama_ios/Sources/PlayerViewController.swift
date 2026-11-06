@@ -20,8 +20,8 @@ final class PlayerViewController: UIViewController, AVPictureInPictureController
     private let videoView = VideoSurfaceView()
     private var chrome: PlayerChrome!
     private var timeObserver: Any?
-    private var endObserver: NSObject?
-    private var failObserver: NSObject?
+    private var endObserver: NSObjectProtocol?
+    private var failObserver: NSObjectProtocol?
     private var controlObservation: NSKeyValueObservation?
     private var pip: AVPictureInPictureController?
 
