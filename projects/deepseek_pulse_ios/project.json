@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "project_type": "native_ios",
+  "project_id": "deepseek_pulse_ios",
+  "app_name": "DeepSeek Pulse",
+  "bundle_id": "com.waqas.deepseekpulse",
+  "scheme": "DeepSeekPulse",
+  "version": "1.0.0",
+  "build_number": "1",
+  "minimum_ios": "15.0",
+  "description": "DeepSeek Pulse 1.0.0: widget-style dashboard for DeepSeek API balance plus peak/off-peak schedule, countdown and rates."
+}
