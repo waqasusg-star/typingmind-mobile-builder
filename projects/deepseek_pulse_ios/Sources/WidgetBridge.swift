@@ -5,8 +5,9 @@ import WidgetKit
 //
 // Compiled into the app target only. Responsibilities:
 //   1. build a sanitised, display-only snapshot from the app's existing stores
-//   2. write it atomically to the shared App Group container
-//   3. ask WidgetKit to reload the timelines
+//   2. write it to the App Group container when that container exists
+//   3. stage it for the extension through the registered handoff link when it does not
+//   4. ask WidgetKit to reload the timelines
 //
 // The API key is never copied here: SettingsStore reads it from the Keychain for network calls only.
 
@@ -44,22 +45,28 @@ enum WidgetBridge {
     /// Result of an attempted write, surfaced in Widget Studio so the state is never guessed.
     enum WriteResult: Equatable {
         case written(URL)
+        /// The App Group container is absent, so the payload was staged for the extension instead.
+        case stagedForExtension
         case groupUnavailable
         case encodingFailed
         case secretRejected
         case ioFailure(String)
 
         var isWritten: Bool {
-            if case .written = self { return true }
-            return false
+            switch self {
+            case .written, .stagedForExtension: return true
+            default: return false
+            }
         }
 
         var description: String {
             switch self {
             case .written(let url):
                 return "Shared snapshot written to " + url.lastPathComponent + "."
+            case .stagedForExtension:
+                return "App Group is unavailable, so the snapshot was handed to the widget through its own refresh link. Open one Pulse widget once to let it save its copy."
             case .groupUnavailable:
-                return "App Group container unavailable: the widget cannot read app data until both bundles have the group entitlement."
+                return "The snapshot could not be shared: no writable location. Open a Pulse widget once so it can start from the built-in schedule."
             case .encodingFailed:
                 return "Snapshot could not be encoded."
             case .secretRejected:
@@ -77,14 +84,14 @@ enum WidgetBridge {
     }
 
     static func write(payload: WidgetSnapshotPayload) -> WriteResult {
-        guard let fileURL = WidgetCacheLocation.shared.fileURL else {
-            return .groupUnavailable
-        }
-        guard let data = try? WidgetCacheCodec.encode(payload) else {
+        guard let data = (try? WidgetCacheCodec.encode(payload)) else {
             return .encodingFailed
         }
         guard !WidgetCacheCodec.containsSecretMaterial(data) else {
             return .secretRejected
+        }
+        guard let fileURL = WidgetCacheLocation.shared.fileURL else {
+            return .groupUnavailable
         }
         do {
             try data.write(to: fileURL, options: [.atomic])
@@ -99,6 +106,9 @@ enum WidgetBridge {
     static func refresh(store: SettingsStore, now: Date = Date()) -> WriteResult {
         let result = write(store: store, now: now)
         if result.isWritten {
+            reloadWidgets()
+        } else if result == .groupUnavailable {
+            // Nothing shareable yet: still ask iOS to redraw, the extension seeds its own copy.
             reloadWidgets()
         }
         return result

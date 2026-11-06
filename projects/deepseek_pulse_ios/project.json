@@ -8,7 +8,7 @@
   "version": "1.0.4",
   "build_number": "5",
   "minimum_ios": "15.0",
-  "description": "Extension keeps its own newer snapshot copy and seeds from the built-in schedule so the widget stays live without App Groups.",
+  "description": "App bridge stages the snapshot for the widget extension through a registered handoff URL when the App Group is unavailable.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
