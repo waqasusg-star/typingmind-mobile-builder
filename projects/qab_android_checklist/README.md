@@ -23,16 +23,15 @@ dependencies, no network, no accounts, no analytics, no ads, no permissions requ
 summary, encoding/decoding, corruption handling) and for persistence/recovery through a fake
 key-value store. They do not use Robolectric and do not need a device or emulator.
 
-```bash
-./gradlew :app:testReleaseUnitTest --no-daemon
-```
+## Build and install
 
-## Build
+The reviewed builder worker generates the standalone Gradle project and includes it in the
+delivered SOURCE ZIP:
 
 ```bash
-# Windows path in the delivered SOURCE ZIP
-./gradlew :app:assembleRelease
-# APKs land in app/build/outputs/apk/release/
+./gradlew :app:assembleRelease   # APK in app/build/outputs/apk/release/
+./gradlew :app:testReleaseUnitTest
+adb install -r app-release.apk
 ```
 
 The reviewed builder pipeline compiles, runs JUnit, runs lint, and signs with the repository's
