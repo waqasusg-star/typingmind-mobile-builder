@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Explicit removal invalidates requests and clears the cache after a successful delete or item-not-found, even when no key was loaded.",
+  "description": "Removal treats every successful delete as an invalidation so an old cached balance cannot survive an already-missing key.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

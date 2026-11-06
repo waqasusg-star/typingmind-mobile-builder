@@ -114,10 +114,10 @@ final class SettingsStore {
             return .deleteFailed
         }
         let result = KeyRemovalResult.removed(KeyChange.compare(previous: previousKey, next: nil))
-        if KeyStoreDecision.invalidates(result) {
-            accountGeneration.invalidate()
-            cachedSnapshot = nil
-        }
+        // Any successful removal invalidates, including item-not-found with no key loaded: an old
+        // cached balance may still be present and must not stay on the Home Screen.
+        accountGeneration.invalidate()
+        cachedSnapshot = nil
         return result
     }
 
