@@ -79,7 +79,7 @@ struct PulseTimelineProvider: TimelineProvider {
 
         let dates = WidgetTimelinePlanner.dates(now: now,
                                                schedule: schedule,
-                                               dataWrittenAt: envelope.payload?.balanceFetchedAt)
+                                               dataFetchedAt: envelope.payload?.balanceFetchedAt)
         var entries: [PulseEntry] = []
         for date in dates {
             // Re-decode for later dates so the stale badge flips exactly when the cache ages out.

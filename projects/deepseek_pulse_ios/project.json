@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "SettingsStore compares the normalized old and new key in memory only; no fingerprint is computed, stored or shared.",
+  "description": "Timeline provider passes the balance fetch time into the planner so the stale entry really decodes as stale.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
