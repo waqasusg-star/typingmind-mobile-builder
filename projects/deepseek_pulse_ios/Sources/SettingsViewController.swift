@@ -506,8 +506,17 @@ final class SettingsViewController: UIViewController {
         KeyStore.delete()
         keyField.text = ""
         SettingsStore.shared.cachedSnapshot = nil
+        // The shared widget snapshot carries no key, but it does carry the balance. Clearing the
+        // key must also clear the widget's copy so a removed account leaves no numbers on screen.
+        let widgetResult = WidgetBridge.refresh(store: SettingsStore.shared)
         NotificationCenter.default.post(name: .deepSeekSettingsChanged, object: nil)
-        alert("API key removed", "The key was deleted from the Keychain and the cached balance was cleared.")
+        var message = "The key was deleted from the Keychain and the cached balance was cleared."
+        if widgetResult == .groupUnavailable {
+            message += " The widget cannot read app data until both bundles share the App Group."
+        } else if !widgetResult.isWritten {
+            message += " The widget snapshot could not be rewritten."
+        }
+        alert("API key removed", message)
     }
 
     @objc private func openKeyPage() {
@@ -640,6 +649,10 @@ final class SettingsViewController: UIViewController {
 
         store.saveSchedule(updatedSchedule, isCustom: isCustom)
         store.saveModels(models, isCustom: ratesAreCustom)
+
+        // Rewrite the shared widget snapshot so the Home Screen follows schedule, rate and key
+        // changes immediately; iOS still decides when the timeline is actually redrawn.
+        WidgetBridge.refresh(store: store)
 
         NotificationCenter.default.post(name: .deepSeekSettingsChanged, object: nil)
         onSaved?()

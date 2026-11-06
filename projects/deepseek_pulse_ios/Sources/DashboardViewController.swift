@@ -462,6 +462,8 @@ final class DashboardViewController: UIViewController {
             switch result {
             case .success(let snapshot):
                 SettingsStore.shared.cachedSnapshot = snapshot
+                // Publish the display-only snapshot for the widget extension (no key inside).
+                WidgetBridge.refresh(store: SettingsStore.shared)
                 self.showMessage(nil, tone: .neutral)
             case .failure(let error):
                 self.showMessage(error.message, tone: .warning)
