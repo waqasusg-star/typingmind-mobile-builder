@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Real WidgetKit SwiftUI views: small, medium, and iOS 16 accessory families.",
+  "description": "App-side widget bridge that writes the App Group snapshot and reloads WidgetKit timelines.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
