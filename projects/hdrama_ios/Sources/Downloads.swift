@@ -328,6 +328,26 @@ final class DownloadStore: NSObject {
         let digest = SHA256.hash(data: Data(id.utf8)).map { String(format: "%02x", $0) }.joined()
         return directory.appendingPathComponent(digest + "." + ext)
     }
+
+    /// Total stored size of a finished download. AVAssetDownloadTask reports no byte count, and an HLS
+    /// download is a bundle directory, so both cases are measured from the file system instead of
+    /// assuming 0.
+    static func storedByteCount(_ url: URL) -> Int64 {
+        let manager = FileManager.default
+        var isDirectory: ObjCBool = false
+        guard manager.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return 0 }
+        if !isDirectory.boolValue {
+            let values = try? url.resourceValues(forKeys: [.fileSizeKey])
+            return Int64(values?.fileSize ?? 0)
+        }
+        guard let enumerator = manager.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey]) else { return 0 }
+        var total: Int64 = 0
+        for case let file as URL in enumerator {
+            let values = try? file.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+            if values?.isRegularFile == true { total += Int64(values?.fileSize ?? 0) }
+        }
+        return total
+    }
 }
 
 extension DownloadStore: AVAssetDownloadDelegate {
@@ -348,6 +368,14 @@ extension DownloadStore: AVAssetDownloadDelegate {
             entry.localPath = DownloadPaths.stored(location, home: URL(fileURLWithPath: NSHomeDirectory()))
             entry.progress = 1
             entry.state = "ready"
+        }
+        // Measure the stored bundle off the main queue; the summary then shows real size, not 0 MB.
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let size = DownloadStore.storedByteCount(location)
+            guard size > 0 else { return }
+            DispatchQueue.main.async {
+                self?.update(id) { entry in entry.bytes = size }
+            }
         }
     }
 
@@ -381,6 +409,13 @@ extension DownloadStore: URLSessionDownloadDelegate {
                 entry.localPath = DownloadPaths.stored(destination, home: URL(fileURLWithPath: NSHomeDirectory()))
                 entry.progress = 1
                 entry.state = "ready"
+            }
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                let size = DownloadStore.storedByteCount(destination)
+                guard size > 0 else { return }
+                DispatchQueue.main.async {
+                    self?.update(id) { entry in entry.bytes = size }
+                }
             }
         } catch {
             update(id) { entry in
@@ -421,7 +456,6 @@ final class DownloadsViewController: UIViewController {
     private let wifiSwitch = UISwitch()
     private var folder: String?
     private var observer: NSObjectProtocol?
-    private var timer: Timer?
     private var signature = ""
     private var episodeButtons: [String: UIButton] = [:]
 
@@ -440,19 +474,12 @@ final class DownloadsViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in self?.render() }
+        // DownloadStore.changed already drives every state and progress change; no polling timer.
         render()
-    }
-
-    override func viewDidDisappear(_ animated: Bool) {
-        super.viewDidDisappear(animated)
-        timer?.invalidate(); timer = nil
     }
 
     deinit {
         if let observer = observer { NotificationCenter.default.removeObserver(observer) }
-        timer?.invalidate()
     }
 
     private func buildHeader() {
@@ -559,7 +586,11 @@ final class DownloadsViewController: UIViewController {
         if let current = folder, folders[current] == nil { folder = nil }
 
         let saved = items.filter { $0.isReady }
-        summary.text = "\(saved.count) saved · " + String(format: "%.1f MB offline", Double(saved.reduce(0) { $0 + $1.bytes }) / 1_048_576)
+        let measured = saved.reduce(Int64(0)) { $0 + max(0, $1.bytes) }
+        // HLS bundles are measured after they finish; until then the size is unknown, not zero.
+        summary.text = measured > 0
+            ? "\(saved.count) saved · " + String(format: "%.1f MB offline", Double(measured) / 1_048_576)
+            : "\(saved.count) saved · size not measured yet"
 
         let key = (folder ?? "root") + "|" + items.map { "\($0.id):\($0.state)" }.joined()
         guard key != signature else {

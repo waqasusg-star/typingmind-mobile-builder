@@ -8,7 +8,7 @@
   "version": "1.1.6",
   "build_number": "8",
   "minimum_ios": "15.0",
-  "description": "HDrama 1.1.6: progress cadence, audio-session release and scoped browser inspection; retained 1.1.2-1.1.5 fixes.",
+  "description": "HDrama 1.1.6: progress cadence, audio-session release, scoped browser inspection, notification-driven downloads screen and measured HLS storage size.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
