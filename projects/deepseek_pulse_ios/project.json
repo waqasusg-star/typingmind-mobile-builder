@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Track the account generation in SettingsStore and clear the cached balance when the key is removed or replaced.",
+  "description": "Make the balance client cancellable so a removed or changed account cannot be repopulated by a late response.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
