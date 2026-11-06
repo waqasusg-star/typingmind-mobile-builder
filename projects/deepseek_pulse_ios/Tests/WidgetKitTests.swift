@@ -29,10 +29,11 @@ func widgetKitChecks() throws {
 
     // MARK: Payload round trip
 
+    let fetchedAt = now.addingTimeInterval(-120)
     let payload = WidgetSnapshotPayload(
         schemaVersion: WidgetShared.schemaVersion,
         writtenAt: now,
-        balanceFetchedAt: now.addingTimeInterval(-120),
+        balanceFetchedAt: fetchedAt,
         balance: WidgetCacheCodec.sanitizedBalance(currency: "usd",
                                                    total: "$12.34",
                                                    granted: "$2.00",
@@ -86,14 +87,13 @@ func widgetKitChecks() throws {
     try expect(WidgetCacheCodec.decode(Data("{\"schemaVersion\":2}".utf8), now: now).state == .corrupt, "a version-only body is corrupt, not fabricated")
     try expect(WidgetCacheCodec.decode(Data("{".utf8), now: now).balanceLine() == "--", "corrupt data shows no fake balance")
 
-    // MARK: Staleness — measured from balanceFetchedAt (now - 120), not from writtenAt.
+    // MARK: Staleness threshold, measured from balanceFetchedAt
 
-    let reference = now.addingTimeInterval(-120)
-    let atLimit = WidgetCacheCodec.decode(data, now: reference.addingTimeInterval(WidgetShared.staleAfter))
-    try expect(atLimit.state == .fresh, "exactly at the stale limit is still fresh")
-    let pastLimit = WidgetCacheCodec.decode(data, now: reference.addingTimeInterval(WidgetShared.staleAfter + 1))
-    try expect(pastLimit.state == .stale, "one second past the limit is stale")
-    try expect(pastLimit.balanceCaption(now: reference.addingTimeInterval(7200)).contains("open the app"), "stale caption tells the user to open the app")
+    let exactlyAtLimit = WidgetCacheCodec.decode(data, now: fetchedAt.addingTimeInterval(WidgetShared.staleAfter))
+    try expect(exactlyAtLimit.state == .fresh, "exactly at the threshold is still fresh (codec uses >)")
+    let onePastLimit = WidgetCacheCodec.decode(data, now: fetchedAt.addingTimeInterval(WidgetShared.staleAfter + 1))
+    try expect(onePastLimit.state == .stale, "one second past the threshold is stale")
+    try expect(onePastLimit.balanceCaption(now: fetchedAt.addingTimeInterval(7200)).contains("open the app"), "stale caption tells the user to open the app")
 
     let noBalancePayload = WidgetSnapshotPayload(schemaVersion: WidgetShared.schemaVersion,
                                                 writtenAt: now, balanceFetchedAt: nil, balance: nil,
@@ -112,7 +112,7 @@ func widgetKitChecks() throws {
     try expect(injected.currency == "USD", "currency has no control characters")
     try expect(injected.totalText == "1.00", "control characters are stripped from amounts")
 
-    // MARK: Honest state labels — the widget shows cached data, so no LIVE claim.
+    // MARK: Honest state labels
 
     try expect(WidgetDataState.groupUnavailable.isUsable == false, "group unavailable is not usable")
     try expect(WidgetDataState.groupUnavailable.explainer.contains("App Group"), "group state explains the entitlement")
@@ -127,14 +127,10 @@ func widgetKitChecks() throws {
 
     let inWindow = WidgetPlanner.snapshot(schedule: schedule, at: utc("2026-11-10T02:00:00"))
     try expect(inWindow.state == .peak, "02:00 UTC on a working Tuesday is peak")
-    let atEnd = WidgetPlanner.snapshot(schedule: schedule, at: utc("2026-11-10T04:00:00"))
-    try expect(atEnd.state == .offPeak, "the peak window end is exclusive")
-    let atStart = WidgetPlanner.snapshot(schedule: schedule, at: utc("2026-11-10T01:00:00"))
-    try expect(atStart.state == .peak, "the peak window start is inclusive")
-    let holiday = WidgetPlanner.snapshot(schedule: schedule, at: utc("2026-10-01T02:00:00"))
-    try expect(holiday.state == .offPeak, "a listed PRC holiday is off-peak in the widget too")
-    let weekend = WidgetPlanner.snapshot(schedule: schedule, at: utc("2026-11-14T02:00:00"))
-    try expect(weekend.state == .offPeak, "a Saturday is off-peak even inside the clock window")
+    try expect(WidgetPlanner.snapshot(schedule: schedule, at: utc("2026-11-10T01:00:00")).state == .peak, "the peak start is inclusive")
+    try expect(WidgetPlanner.snapshot(schedule: schedule, at: utc("2026-11-10T04:00:00")).state == .offPeak, "the peak end is exclusive")
+    try expect(WidgetPlanner.snapshot(schedule: schedule, at: utc("2026-10-01T02:00:00")).state == .offPeak, "a listed PRC holiday is off-peak")
+    try expect(WidgetPlanner.snapshot(schedule: schedule, at: utc("2026-11-14T02:00:00")).state == .offPeak, "a Saturday is off-peak inside the clock window")
     let unverifiedYear = WidgetPlanner.snapshot(schedule: schedule, at: utc("2028-03-06T02:00:00"))
     try expect(unverifiedYear.uncertain, "an uncovered year is flagged unverified")
     try expect(WidgetPlanner.footnote(snapshot: unverifiedYear, discountsEnabled: true, timeZone: TimeZone(secondsFromGMT: 0)!).contains("unverified"), "the footnote admits the unverified calendar")
@@ -158,54 +154,86 @@ func widgetKitChecks() throws {
         try expect(!WidgetPolicy.isWidgetDeepLink(other), "other schemes are rejected")
     }
 
-    // MARK: Bounded timeline planner — real transitions, not a fixed +30 minute step
+    // MARK: Timeline planner on the real schedule
 
     let planStart = utc("2026-11-10T00:30:00")
+    let planFetched = planStart.addingTimeInterval(-120)
     let plan = WidgetTimelinePlanner.boundaries(now: planStart,
                                                schedule: schedule,
-                                               dataWrittenAt: planStart.addingTimeInterval(-120))
+                                               dataFetchedAt: planFetched)
     try expect(!plan.isEmpty, "the planner produces at least one entry")
     try expect(plan.first?.reason == .now, "the first boundary is now")
-    try expect(plan.count <= WidgetTimelinePlanner.maximumEntries, "the planner is bounded")
-    try expect(plan == plan.sorted(by: { $0.date < $1.date }), "boundaries are strictly ordered")
+    try expect(plan.count <= WidgetTimelinePlanner.maximumEntries, "the plan respects the entry cap")
+    try expect(plan == plan.sorted(by: { $0.date < $1.date }), "boundaries are ordered")
 
-    let switches = plan.filter { $0.reason == .peakSwitch }
-    try expect(!switches.isEmpty, "the plan contains real pricing transitions")
-    if let firstSwitch = switches.first {
-        try expect(firstSwitch.date == utc("2026-11-10T01:00:00"), "the first transition is the real 01:00 UTC peak start")
-    }
-    if switches.count > 1 {
-        try expect(switches[1].date == utc("2026-11-10T04:00:00"), "the second transition is the real 04:00 UTC peak end")
+    let switchMarks = plan.filter { $0.reason == .peakSwitch }
+    try expect(switchMarks.count == 1, "only the nearest transition is planned, not eight")
+    if let first = switchMarks.first {
+        try expect(first.date == utc("2026-11-10T01:00:00"), "the planned transition is the real 01:00 UTC peak start")
     }
 
-    // Exact midnight UTC boundary: the band and day key change there.
-    let midnightPlan = WidgetTimelinePlanner.boundaries(now: utc("2026-11-10T23:58:00"),
+    // Horizon bound: nothing may sit further away than one day.
+    let horizonLimit = planStart.addingTimeInterval(WidgetTimelinePlanner.horizon)
+    try expect(plan.allSatisfy { $0.date <= horizonLimit }, "no entry is beyond the planning horizon")
+
+    // Bounded reload request, consistent with maximumRefreshInterval.
+    let reloadBounds = plan.filter { $0.reason == .reloadBound }
+    try expect(!reloadBounds.isEmpty, "a bounded reload entry is always present")
+    if let bound = reloadBounds.first {
+        try expect(bound.date <= planStart.addingTimeInterval(WidgetPolicy.maximumRefreshInterval), "the reload bound is within the policy maximum")
+    }
+
+    // MARK: Integration — the planned cache-stale entry really decodes as stale
+
+    let staleMarks = plan.filter { $0.reason == .cacheStale }
+    try expect(staleMarks.count == 1, "the cache-stale crossing is planned exactly once")
+    if let mark = staleMarks.first {
+        // Just before the mark the SAME bytes must still be fresh.
+        let justBefore = mark.date.addingTimeInterval(-1)
+        try expect(WidgetCacheCodec.decode(data, now: justBefore).state == .fresh, "an instant before the stale mark still decodes fresh")
+        // At the mark they must be stale — this is what the old +0 crossing got wrong.
+        try expect(WidgetCacheCodec.decode(data, now: mark.date).state == .stale, "the planned stale entry actually decodes as stale")
+        try expect(mark.date > fetchedAt.addingTimeInterval(WidgetShared.staleAfter), "the stale mark is strictly past the codec threshold")
+    }
+
+    // MARK: Long holiday run — no transitions, still bounded and still honest
+
+    let holidayPlan = WidgetTimelinePlanner.boundaries(now: utc("2026-10-02T12:00:00"),
                                                        schedule: schedule,
-                                                       dataWrittenAt: nil)
-    let midnights = midnightPlan.filter { $0.reason == .utcMidnight }
+                                                       dataFetchedAt: utc("2026-10-02T11:00:00"))
+    try expect(holidayPlan.first?.reason == .now, "a holiday plan starts at now")
+    try expect(holidayPlan.count <= WidgetTimelinePlanner.maximumEntries, "a holiday plan is bounded")
+    try expect(holidayPlan.contains { $0.reason == .utcMidnight }, "a holiday plan still includes UTC midnight")
+    try expect(WidgetPlanner.snapshot(schedule: schedule, at: utc("2026-10-02T12:00:00")).state == .offPeak, "a holiday midday is off-peak")
+
+    // MARK: Every UTC midnight inside the horizon is included
+
+    let nearMidnight = WidgetTimelinePlanner.boundaries(now: utc("2026-11-10T23:50:00"),
+                                                       schedule: schedule,
+                                                       dataFetchedAt: nil)
+    let midnights = nearMidnight.filter { $0.reason == .utcMidnight }
     try expect(!midnights.isEmpty, "a midnight boundary is included near the end of the day")
     if let midnight = midnights.first {
         try expect(midnight.date == utc("2026-11-11T00:00:00"), "the midnight boundary is exactly 00:00 UTC")
     }
 
-    // Cache-stale crossing must be planned so the badge flips without a reload loop.
-    let stalePlan = WidgetTimelinePlanner.boundaries(now: planStart,
-                                                     schedule: schedule,
-                                                     dataWrittenAt: planStart.addingTimeInterval(-120))
-    let staleMarks = stalePlan.filter { $0.reason == .cacheStale }
-    try expect(!staleMarks.isEmpty, "the cache-stale crossing is planned")
-    if let mark = staleMarks.first {
-        let expected = planStart.addingTimeInterval(-120).addingTimeInterval(WidgetShared.staleAfter)
-        try expect(mark.date == expected, "the stale crossing is exactly fetch time plus staleAfter")
-    }
+    // MARK: No usable cache — planner still bounded, no invented stale entry
 
-    // A schedule that never transitions still yields a bounded plan.
+    let noCachePlan = WidgetTimelinePlanner.boundaries(now: planStart,
+                                                       schedule: schedule,
+                                                       dataFetchedAt: nil)
+    try expect(noCachePlan.filter { $0.reason == .cacheStale }.isEmpty, "no fetch time means no stale crossing")
+    try expect(!noCachePlan.isEmpty, "a plan exists even with no cached balance")
+    try expect(noCachePlan.count <= WidgetTimelinePlanner.maximumEntries, "the no-cache plan is bounded")
+
+    // MARK: Non-discount schedule
+
     let quietPlan = WidgetTimelinePlanner.boundaries(now: planStart,
                                                      schedule: standardSchedule,
-                                                     dataWrittenAt: nil)
-    try expect(!quietPlan.isEmpty, "a non-discount schedule still produces a plan")
+                                                     dataFetchedAt: planFetched)
     try expect(quietPlan.filter { $0.reason == .peakSwitch }.isEmpty, "a non-discount schedule has no peak switches")
-    try expect(quietPlan.count <= WidgetTimelinePlanner.maximumEntries, "the quiet plan is bounded")
+    try expect(!quietPlan.isEmpty, "a non-discount plan still has entries")
+    try expect(quietPlan.count <= WidgetTimelinePlanner.maximumEntries, "the non-discount plan is bounded")
 
     // MARK: Account generation — a changed account cannot repopulate the cache
 
@@ -216,28 +244,24 @@ func widgetKitChecks() throws {
     try expect(!generation.accepts(ticket), "after invalidation the old ticket is rejected")
     try expect(AccountPolicy.acceptance(ticket: ticket, current: generation, hasKey: true) == .discardStaleAccount, "a stale-account response is discarded")
     try expect(AccountPolicy.acceptance(ticket: ticket, current: generation, hasKey: false) == .discardNoKey, "no key discards regardless of generation")
-    let freshTicket = generation.ticket()
-    try expect(AccountPolicy.acceptance(ticket: freshTicket, current: generation, hasKey: true) == .accept, "a current ticket is accepted")
+    try expect(AccountPolicy.acceptance(ticket: generation.ticket(), current: generation, hasKey: true) == .accept, "a current ticket is accepted")
     try expect(AccountPolicy.acceptance(ticket: nil, current: generation, hasKey: true) == .discardStaleAccount, "a missing ticket is never accepted")
     try expect(!BalanceAcceptance.discardStaleAccount.shouldCache, "discarded results never cache")
 
-    try expect(AccountPolicy.clearsCache(previousKeyHash: nil, newKeyHash: nil) == false, "no key to no key does not clear")
-    try expect(AccountPolicy.clearsCache(previousKeyHash: 1, newKeyHash: nil), "removing a key clears the cache")
-    try expect(AccountPolicy.clearsCache(previousKeyHash: 1, newKeyHash: 2), "changing the key clears the cache")
-    try expect(AccountPolicy.clearsCache(previousKeyHash: 1, newKeyHash: 1) == false, "re-saving the same key keeps the cache")
+    // MARK: Key change comparison — plain equality, no hashing
 
-    try expect(AccountPolicy.keyFingerprint("   ") == nil, "an empty key has no fingerprint")
-    try expect(AccountPolicy.keyFingerprint("sk-test-1234") != nil, "a real key has a fingerprint")
-    try expect(AccountPolicy.keyFingerprint("sk-test-1234") == AccountPolicy.keyFingerprint("sk-test-1234"), "the fingerprint is stable")
-    try expect(AccountPolicy.keyFingerprint("sk-test-1234") != AccountPolicy.keyFingerprint("sk-test-5678"), "different keys have different fingerprints")
-    // The fingerprint is an integer only; no key text can appear in a shared payload built from it.
-    let fingerprintPayload = WidgetSnapshotPayload(schemaVersion: WidgetShared.schemaVersion,
-                                                   writtenAt: now, balanceFetchedAt: nil, balance: nil,
-                                                   schedule: schedule,
-                                                   models: [WidgetRate(name: "deepseek-flash", label: "V4.1", offPeakDiscountPercent: 50)],
-                                                   hasAPIKey: AccountPolicy.keyFingerprint("sk-test-1234") != nil)
-    let fingerprintData = try WidgetCacheCodec.encode(fingerprintPayload)
-    try expect(!WidgetCacheCodec.containsSecretMaterial(fingerprintData), "a payload derived from the fingerprint carries no secret")
+    try expect(KeyChange.compare(previous: nil, next: nil) == .unchanged, "no key to no key is unchanged")
+    try expect(KeyChange.compare(previous: "", next: "   ") == .unchanged, "whitespace normalises to no key")
+    try expect(KeyChange.compare(previous: "sk-a", next: "sk-a") == .unchanged, "the same key is unchanged")
+    try expect(KeyChange.compare(previous: " sk-a ", next: "sk-a") == .unchanged, "surrounding whitespace is ignored")
+    try expect(KeyChange.compare(previous: nil, next: "sk-a") == .changed, "adding a key is a change")
+    try expect(KeyChange.compare(previous: "sk-a", next: nil) == .changed, "removing a key is a change")
+    try expect(KeyChange.compare(previous: "sk-a", next: "sk-b") == .changed, "switching account is a change")
+    try expect(KeyChange.compare(previous: "sk-a", next: "sk-b").clearsCachedBalance, "switching account clears the cache")
+    try expect(!KeyChange.compare(previous: "sk-a", next: "sk-a").clearsCachedBalance, "re-saving the same key keeps the cache")
+
+    // A payload built the way the app builds it never carries the key: the model has no field for it.
+    try expect(!WidgetCacheCodec.containsSecretMaterial(data), "a real payload carries no key material")
 
     // MARK: Identity constants
 
