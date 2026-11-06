@@ -5,8 +5,8 @@
   "app_name": "HDrama",
   "bundle_id": "com.waqas.hdrama",
   "scheme": "HDrama",
-  "version": "1.1.1",
-  "build_number": "3",
+  "version": "1.1.2",
+  "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "HDrama 1.1.1: ad blocker rewritten so Cloudflare verification completes (blanket third-party block removed, main-frame only DOM script with no global overrides, challenge nodes protected, CF traffic exempt, Safari user agent, verificationURL wired in)."
+  "description": "HDrama 1.1.2: targeted ad filtering, protected verification frames, explicit per-site compatibility mode; runtime verification pending."
 }

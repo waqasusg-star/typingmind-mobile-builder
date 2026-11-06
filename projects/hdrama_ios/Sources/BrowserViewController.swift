@@ -5,6 +5,8 @@ import WebKit
 final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
 
     private var webView: WKWebView!
+    private var compatibilityEnabled: Bool { UserDefaults.standard.bool(forKey: "site.compatibility." + SitePolicy.host) }
+    private var siteAction: SquareAction!
     private let dock = UIView()
     private let dockStack = UIStackView()
     private var playAction: SquareAction!
@@ -66,13 +68,16 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
 
     private func buildWebView() {
         let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .default()
         configuration.allowsInlineMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = .all
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         let controller = WKUserContentController()
         // Main frame only: the ad DOM script must never run inside the Cloudflare verification frame.
-        AdBlocker.configure(controller, mainFrameOnly: true)
-        controller.addUserScript(WKUserScript(source: Scripts.install, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        if !compatibilityEnabled {
+            AdBlocker.configure(controller, mainFrameOnly: true)
+            controller.addUserScript(WKUserScript(source: Scripts.install, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        }
         configuration.userContentController = controller
         webView = WKWebView(frame: .zero, configuration: configuration)
         webView.translatesAutoresizingMaskIntoConstraints = false
@@ -88,8 +93,9 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         webView.scrollView.backgroundColor = AppColors.background
         webView.scrollView.refreshControl = refreshControl
         refreshControl.tintColor = AppColors.accent
+        refreshControl.removeTarget(self, action: #selector(reloadPage), for: .valueChanged)
         refreshControl.addTarget(self, action: #selector(reloadPage), for: .valueChanged)
-        view.addSubview(webView)
+        view.insertSubview(webView, at: 0)
         NSLayoutConstraint.activate([
             webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -111,7 +117,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         progressBar.isHidden = true
         view.addSubview(progressBar)
         NSLayoutConstraint.activate([
-            progressBar.topAnchor.constraint(equalTo: webView.topAnchor),
+            progressBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             progressBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             progressBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             progressBar.heightAnchor.constraint(equalToConstant: 2)
@@ -139,6 +145,8 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
             dockStack.trailingAnchor.constraint(equalTo: dock.trailingAnchor, constant: -8)
         ])
 
+        siteAction = SquareAction(symbol: "shield.lefthalf.filled", title: "Site")
+        siteAction.onTap = { [weak self] in self?.showSiteOptions() }
         listAction = SquareAction(symbol: "heart", title: "My List")
         downloadsAction = SquareAction(symbol: "arrow.down", title: "Download")
         historyAction = SquareAction(symbol: "clock", title: "History")
@@ -154,7 +162,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         historyAction.onTap = { [weak self] in self?.presentList(.history) }
         playAction.onTap = { [weak self] in self?.openPlayer() }
 
-        [listAction, downloadsAction, historyAction, playAction].forEach { dockStack.addArrangedSubview($0!) }
+        [listAction, downloadsAction, historyAction, siteAction, playAction].forEach { dockStack.addArrangedSubview($0!) }
 
         view.addSubview(dock)
         let preferred = dock.widthAnchor.constraint(equalToConstant: 440)
@@ -196,6 +204,36 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         if !keyboardVisible { updateDockPosition() }
     }
 
+    private func showSiteOptions() {
+        let message = compatibilityEnabled
+            ? "Compatibility is ON for this site. Ad filters and page helpers are paused; ads may appear. Cookies stay available. Turn it off after verification to restore native Play detection."
+            : "Compatibility is OFF. If verification cannot finish, pause ad filters and page helpers for this site. Cookies are kept; no challenge is solved automatically."
+        let alert = UIAlertController(title: "Site compatibility", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: compatibilityEnabled ? "Restore ad blocking" : "Enable compatibility", style: .default) { [weak self] _ in
+            guard let self = self else { return }
+            let destination = self.webView.url.flatMap { SitePolicy.siteURL($0.absoluteString) } ?? URL(string: SitePolicy.home)!
+            UserDefaults.standard.set(!self.compatibilityEnabled, forKey: "site.compatibility." + SitePolicy.host)
+            self.webView.stopLoading()
+            self.progressObservation = nil
+            self.webView.navigationDelegate = nil
+            self.webView.uiDelegate = nil
+            self.webView.removeFromSuperview()
+            self.inspectionEpoch += 1
+            self.inspecting = false
+            self.currentPage = ""
+            self.validatedPage = ""
+            self.target = nil
+            self.validatedSeries = nil
+            self.footerHeight = 0
+            self.playAction.isHidden = true
+            self.buildWebView()
+            self.webView.load(URLRequest(url: destination))
+            self.updateDockPosition()
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
+    }
+
     @objc private func reloadPage() {
         target = nil
         validatedPage = ""
@@ -212,7 +250,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
     // MARK: - Inspection
 
     private func inspectPage() {
-        guard !keyboardVisible, !inspecting, let url = webView.url?.absoluteString,
+        guard !compatibilityEnabled, !keyboardVisible, !inspecting, let url = webView.url?.absoluteString,
               SitePolicy.siteURL(url) != nil else { return }
         inspecting = true
         let epoch = inspectionEpoch
@@ -236,15 +274,6 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
               webView.url?.absoluteString == url else { return }
         pageChanged(url)
 
-        if let footer = data["footerHeight"] as? Double,
-           let viewport = data["viewportHeight"] as? Double,
-           viewport > 0, webView.bounds.height > 0, !keyboardVisible {
-            let scale = webView.bounds.height / CGFloat(viewport)
-            footerHeight = min(max(0, CGFloat(footer)), CGFloat(viewport) * 0.3) * scale
-            updateDockPosition()
-            injectDockSpace(viewport: CGFloat(viewport))
-        }
-
         let html = data["html"] as? String ?? ""
         if (data["blocked"] as? Bool == true) || SeriesParser.blocked(html) {
             target = nil
@@ -252,6 +281,15 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
             playAction?.isHidden = true
             launchRequested = false
             return
+        }
+
+        if let footer = data["footerHeight"] as? Double,
+           let viewport = data["viewportHeight"] as? Double,
+           viewport > 0, webView.bounds.height > 0, !keyboardVisible {
+            let scale = webView.bounds.height / CGFloat(viewport)
+            footerHeight = min(max(0, CGFloat(footer)), CGFloat(viewport) * 0.3) * scale
+            updateDockPosition()
+            injectDockSpace(viewport: CGFloat(viewport))
         }
 
         if !html.isEmpty || validatedPage != url {
@@ -351,9 +389,14 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
             }
             return
         }
+        if navigationAction.targetFrame?.isMainFrame == false,
+           url == "about:blank" || url == "about:srcdoc" {
+            decisionHandler(.allow)
+            return
+        }
         // Cloudflare verification must be allowed to load and finish, including in its own frame.
         // 1.1.0 cancelled this traffic, which could stop the check from ever completing.
-        if SitePolicy.verificationURL(url) {
+        if navigationAction.targetFrame != nil, SitePolicy.verificationURL(url) {
             decisionHandler(.allow)
             return
         }

@@ -13,5 +13,6 @@ vm.runInContext(fs.readFileSync(__dirname+'/../typingmind-plugin/plugin.js','utf
  requests=[];await assert.rejects(()=>ctx.native_ios_save_project({...project,expected_commit:'d'.repeat(40)},settings),/changed/);assert(!requests.some(r=>r.o.method==='POST'));
  metadata={project_type:'native_ios',bundle_id:'com.worldgate.original'};await assert.rejects(()=>ctx.native_ios_save_project(project,settings),/bundle ID/);
  metadata=null;await assert.rejects(()=>ctx.native_ios_save_project({...project,files:[{path:'Sources/App.swift',content:'github_pat_credential'}]},settings),/credential/);
+ const plan=JSON.parse(ctx.universal_builder_plan_work({}, {workflowProfile:'Web compatibility'}));assert(plan.modules.includes('web_compatibility'));assert(!plan.modules.includes('ui_features'));assert.throws(()=>ctx.universal_builder_plan_work({modules:['invented']}),/supported/);
  console.log('PASS: native project discovery, safe source paths, preserved metadata, atomic source commits, stale-edit and bundle identity protection.');
 })().catch(e=>{console.error(e);process.exit(1)});

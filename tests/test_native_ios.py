@@ -24,11 +24,18 @@ class NativeTests(unittest.TestCase):
  def test_device_verifier_rejects_simulators_and_provisioning_profiles(self):
   with tempfile.TemporaryDirectory()as d:
    root=Path(d);source,cfg=self.fixture(root);app=root/'NativeApp.app';app.mkdir();(app/'NativeApp').write_bytes(b'fixture')
-   info={'CFBundleIdentifier':cfg['bundle_id'],'CFBundleExecutable':'NativeApp','DTPlatformName':'iphoneos','CFBundleSupportedPlatforms':['iPhoneOS']};(app/'Info.plist').write_bytes(plistlib.dumps(info))
+   info={'CFBundleIdentifier':cfg['bundle_id'],'CFBundleShortVersionString':cfg['version'],'CFBundleVersion':cfg['build_number'],'CFBundleExecutable':'NativeApp','DTPlatformName':'iphoneos','CFBundleSupportedPlatforms':['iPhoneOS']};(app/'Info.plist').write_bytes(plistlib.dumps(info))
    worker.verify_bundle(app,cfg,lambda args:'arm64\n');info['DTPlatformName']='iphonesimulator';(app/'Info.plist').write_bytes(plistlib.dumps(info))
    with self.assertRaisesRegex(ValueError,'Simulator'):worker.verify_bundle(app,cfg,lambda args:'arm64')
    info['DTPlatformName']='iphoneos';(app/'Info.plist').write_bytes(plistlib.dumps(info));(app/'embedded.mobileprovision').write_bytes(b'fixture')
    with self.assertRaisesRegex(ValueError,'provisioning'):worker.verify_bundle(app,cfg,lambda args:'arm64')
+ def test_source_download_preserves_version_and_commit(self):
+  with tempfile.TemporaryDirectory()as d:
+   root=Path(d);source,cfg=self.fixture(root);out=root/'out';out.mkdir();(source/'README.md').write_text('build instructions');(source/'BUILD_NOTES.md').write_text('changes');(source/'project.yml').write_text('name: NativeApp')
+   package=worker.package_source(source,out,cfg,'a'*40)
+   self.assertEqual(package.name,'NativeApp-iOS-1.2.3-build7-source.zip')
+   with zipfile.ZipFile(package) as z:
+    self.assertEqual(z.read('NativeApp-iOS/SOURCE-COMMIT.txt').decode(),'a'*40+'\n');self.assertEqual(json.loads(z.read('NativeApp-iOS/project.json'))['version'],'1.2.3');self.assertIn('NativeApp-iOS/Sources/App.swift',z.namelist())
  def test_payload_integrity_and_traversal(self):
   with tempfile.TemporaryDirectory()as d:
    package=Path(d)/'app.ipa'
@@ -38,8 +45,8 @@ class NativeTests(unittest.TestCase):
    with self.assertRaisesRegex(ValueError,'Unsafe'):worker.verify_ipa(package,'App.app','App')
  def test_publisher_enforces_identity_checks_and_hash(self):
   with tempfile.TemporaryDirectory()as d:
-   folder=Path(d);env={'PROJECT_ID':'test_app','REQUEST_ID':'request01','SOURCE_SHA':'a'*40};package=folder/'test_app-ios-unsigned.ipa';package.write_bytes(b'fixture')
-   data=dict(project_id='test_app',request_id='request01',source_sha='a'*40,platform='native_ios_unsigned',project_type='native_ios',build_result='success',compile_passed=True,analyze_passed=True,device_build_verified=True,package_verified=True,code_signing='unsigned',signature_verified=False,requires_signing=True,install_ready=False,tests_passed=False,files=[{'name':package.name,'size_bytes':7,'sha256':hashlib.sha256(b'fixture').hexdigest()}]);report=folder/'Build-Report.json';report.write_text(json.dumps(data))
+   folder=Path(d);env={'PROJECT_ID':'test_app','REQUEST_ID':'request01','SOURCE_SHA':'a'*40};package=folder/'NativeApp-iOS-1.2.3-build7-ios-unsigned.ipa';package.write_bytes(b'fixture')
+   data=dict(project_id='test_app',request_id='request01',source_sha='a'*40,platform='native_ios_unsigned',project_type='native_ios',build_result='success',compile_passed=True,analyze_passed=True,device_build_verified=True,package_verified=True,code_signing='unsigned',signature_verified=False,requires_signing=True,install_ready=False,tests_passed=False,version='1.2.3',build_number='7',source_package_verified=True,files=[{'name':package.name,'size_bytes':7,'sha256':hashlib.sha256(b'fixture').hexdigest()}]);source=folder/'NativeApp-iOS-1.2.3-build7-source.zip';source.write_bytes(b'source');data['files'].append({'name':source.name,'size_bytes':6,'sha256':hashlib.sha256(b'source').hexdigest()});report=folder/'Build-Report.json';report.write_text(json.dumps(data))
    self.assertEqual(publisher.verify(folder,env)[0],package)
    package.write_bytes(b'tampered')
    with self.assertRaisesRegex(ValueError,'hash'):publisher.verify(folder,env)

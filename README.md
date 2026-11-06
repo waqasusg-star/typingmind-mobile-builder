@@ -84,3 +84,7 @@ The first real Android run succeeded from inside TypingMind. The published APK S
 ## Public source and token lifetime
 
 The owner requested public source and a token with No expiration. Public source must be explicitly enabled in TypingMind Settings. Repository visibility does not remove the need for authenticated writes/build control. The token remains in the TypingMind password field; Android/Apple signing inputs remain in encrypted GitHub Secrets and must never be committed. Public app source, logs and artifacts can be viewed by others, so client documents and private business data must not be embedded. No expiration means no scheduled expiry, not guaranteed lifetime: GitHub can revoke credentials and automatically revokes tokens unused for a year. Apple signing certificates/profiles have separate expiration rules.
+
+## Version 7 delivery and work modules
+
+Native builds publish a versioned unsigned IPA and matching updated source ZIP, plus hashes and a build report. Actual archived app version/build must match metadata. Plugin Settings → Work modules profile chooses Complete delivery, Review and fix, Web compatibility, or Build and release. Select Work Modules can choose individual task modules. This organizes the selected model’s work; it does not guarantee correctness or create unsupported tools. Cloudflare completion remains a real-device check; builds never solve verification challenges.

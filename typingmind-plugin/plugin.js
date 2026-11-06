@@ -38,7 +38,7 @@ async function mb_commit(c,head,files,message){
 }
 function mobile_builder_setup_status(params,settings={}){
  let deflate=false;try{new DecompressionStream('deflate-raw');deflate=true;}catch(_){}
- return mb_json({plugin:'Universal App Builder',modes:['android','ios','ios_unsigned','windows','extension'],token_configured:!!String(settings.githubToken||'').trim(),owner_configured:!!settings.githubOwner,repository_configured:!!settings.githubRepo,browser_artifact_extraction_supported:deflate,public_source_enabled:settings.allowPublicSource==='on',connection_verified:false,
+ return mb_json({plugin:'Universal App Builder',version:7,workflow_profile:settings.workflowProfile||'Complete delivery',available_modules:['source_review','web_compatibility','ui_features','verification','build_release'],modes:['android','ios','ios_unsigned','native_ios_unsigned','windows','extension'],token_configured:!!String(settings.githubToken||'').trim(),owner_configured:!!settings.githubOwner,repository_configured:!!settings.githubRepo,browser_artifact_extraction_supported:deflate,public_source_enabled:settings.allowPublicSource==='on',connection_verified:false,
   required:'A dedicated GitHub repository initialized with a README; repository-scoped Contents/Actions read-write access, plus Workflows write for pipeline installation.',
   signing:'Persistent Android release signing secrets; Apple Distribution certificate plus a matching unexpired ad hoc provisioning profile covering the target iPhone.',
   note:'Offline check only. ChatGPT GitHub access is separate from TypingMind. No native compilation or live build has been verified by this check. Never paste credentials in chat.'});
@@ -174,7 +174,8 @@ async function mobile_builder_get_download(params,settings){
   if(/\.(apk|ipa)$/i.test(f.name)&&report.signature_verified!==true){
    if(!(f.name.endsWith('-ios-unsigned.ipa')&&['ios_unsigned','native_ios_unsigned'].includes(report.platform)&&report.code_signing==='unsigned'&&report.requires_signing===true&&report.install_ready===false&&report.signature_verified===false&&report.analyze_passed===true&&((report.platform==='ios_unsigned'&&report.tests_passed===true)||(report.platform==='native_ios_unsigned'&&report.project_type==='native_ios'&&report.compile_passed===true))&&report.device_build_verified===true&&report.package_verified===true))throw new Error('Mobile signature was not verified.');
   }
-  if(/\.(exe|zip)$/i.test(f.name)&&!(report.analyze_passed===true&&report.tests_passed===true&&((report.platform==='windows'&&report.installer_smoke_passed===true&&report.runtime_smoke_passed===true)||(report.platform==='extension'&&report.browser_smoke_passed===true))))throw new Error('Desktop or extension package lacks successful validation.');
+  const nativeSource=f.name.endsWith('-source.zip')&&report.platform==='native_ios_unsigned'&&report.source_package_verified===true&&report.compile_passed===true&&report.analyze_passed===true&&report.package_verified===true;
+  if(/\.(exe|zip)$/i.test(f.name)&&!nativeSource&&!(report.analyze_passed===true&&report.tests_passed===true&&((report.platform==='windows'&&report.installer_smoke_passed===true&&report.runtime_smoke_passed===true)||(report.platform==='extension'&&report.browser_smoke_passed===true))))throw new Error('Desktop or extension package lacks successful validation.');
   const expected=report.files.find(x=>x.name===f.name),digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',f.bytes))).map(x=>x.toString(16).padStart(2,'0')).join('');
   if(!expected||digest!==expected.sha256)throw new Error('Package hash differs from its build report.');
  }
@@ -231,4 +232,13 @@ async function native_ios_build_status(params,settings){
  const c=mb_context(settings);let id=params.run_id;
  if(!id){if(!/^[A-Za-z0-9][A-Za-z0-9_-]{5,63}$/.test(params.request_id||''))throw new Error('Use the original native run or request ID.');const run=await native_ios_find_run(c,params.request_id);if(!run)return mb_json({status:'not_visible_yet',request_id:params.request_id,next_action:'Check this same request later; do not submit a new build.'});id=run.id;}
  return mobile_builder_build_status({run_id:id},settings);
+}
+
+function universal_builder_plan_work(params={},settings={}) {
+ const available=['source_review','web_compatibility','ui_features','verification','build_release'];
+ const profiles={'Complete delivery':available,'Review and fix':['source_review','verification'],'Web compatibility':['source_review','web_compatibility','verification','build_release'],'Build and release':['source_review','verification','build_release']};
+ const profile=Object.hasOwn(profiles,settings.workflowProfile)?settings.workflowProfile:'Complete delivery';
+ const modules=params.modules||profiles[profile];
+ if(!Array.isArray(modules)||!modules.length||modules.some(m=>!available.includes(m))||new Set(modules).size!==modules.length)throw new Error('Select unique supported work modules.');
+ return mb_json({profile,modules,available_modules:available,completion_requirements:['inspect_actual_source','preserve_identity_and_existing_features','use_exact_saved_sha','read_real_reports','versioned_package_and_source_links','state_signing_and_runtime_limits'],note:'Modules organize this task; they do not add unsupported tools or guarantee model correctness. Use the chat model selector to change the model. A real phone pass requires real-device evidence.'});
 }

@@ -4,11 +4,9 @@ import Foundation
 enum Scripts {
     static let install = """
     (() => {
+      if (window.top !== window || location.hostname !== 'en.hdrama.net' || /\\/cdn-cgi\\//.test(location.pathname) || /just a moment|attention required|verify.{0,12}human/i.test(document.title) || document.querySelector('[class*="turnstile"],[id*="challenge"],iframe[src*="challenges.cloudflare.com"]')) return;
       if (window.__hdramaNativeInstalled) return;
       window.__hdramaNativeInstalled = true;
-      const style = document.createElement('style');
-      style.textContent = '[data-ad],[data-ad-slot],[data-ad-unit],.adsbygoogle,[id^="google_ads"],[id^="div-gpt-ad"],.ad-banner,.ad-container,.advertisement,.popup-ad,.ad-popup,.banner-ad,.popunder,.sticky-ad,[class*="advert"],[id*="advert"],[class*="interstitial"],[id*="interstitial"],[class*="popunder"],[class*="sponsored"],[class*="sticky-ad"],[id*="sticky-ad"]{display:none!important}';
-      (document.head || document.documentElement).appendChild(style);
       const nativePlay = () => { location.href = 'hdrama-native://play'; };
       document.addEventListener('click', event => {
         const node = event.target instanceof Element ? event.target : null;
