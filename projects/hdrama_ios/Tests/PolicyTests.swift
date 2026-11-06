@@ -36,5 +36,12 @@ func expect(_ value: @autoclosure () -> Bool, _ message: String) { if !value() {
   expect(gate.finish(resumed) && gate.active == nil, "Current completion releases the queue")
   expect(!gate.accepts(resumed, itemID: "episode", state: "queued"), "Duplicate completion cannot start another task")
   print("PASS: 24 request/path and cancellation checks; not a full app/UI/device test suite")
+
+  let now = Date(timeIntervalSince1970: 1_700_000_000)
+  expect(ProgressWritePolicy.shouldFlush(last: nil, now: now, force: false), "First progress write is immediate")
+  expect(!ProgressWritePolicy.shouldFlush(last: now.addingTimeInterval(-1), now: now, force: false), "Rapid checkpoint is coalesced")
+  expect(ProgressWritePolicy.shouldFlush(last: now.addingTimeInterval(-5), now: now, force: false), "Checkpoint after the interval is written")
+  expect(ProgressWritePolicy.shouldFlush(last: now, now: now, force: true), "Completion and favourite writes bypass the throttle")
+  print("PASS: 4 progress-write throttle checks; not a full app/UI/device test suite")
  }
 }
