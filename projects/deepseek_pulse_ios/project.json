@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Settings key save and removal go through the account generation so a changed account clears its cached balance.",
+  "description": "Dashboard balance requests carry an account ticket, discard late responses for a changed account, and cancel on key change.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

@@ -420,6 +420,10 @@ final class DashboardViewController: UIViewController {
 
     @objc private func settingsChanged() {
         lastRateSignature = ""
+        // The account may have changed: drop any request that is still in flight for the old key.
+        client.cancel()
+        isLoading = false
+        refreshControl.endRefreshing()
         render()
     }
 
@@ -454,11 +458,26 @@ final class DashboardViewController: UIViewController {
         }
 
         isLoading = true
+        // The ticket identifies the account this request belongs to. If the key is removed or
+        // changed before the response arrives, the result is discarded instead of cached.
+        let ticket = SettingsStore.shared.currentAccountTicket()
         showMessage("Contacting api.deepseek.com…", tone: .neutral)
         client.fetchBalance(apiKey: key) { [weak self] result in
             guard let self = self else { return }
             self.isLoading = false
             self.refreshControl.endRefreshing()
+
+            let acceptance = SettingsStore.shared.acceptsBalance(ticket: ticket)
+            guard acceptance.shouldCache else {
+                // Late response for a removed or replaced account: no cache write, no widget write.
+                self.showMessage(SettingsStore.shared.hasAPIKey
+                                 ? "That balance was discarded because the account changed."
+                                 : "Add your DeepSeek API key in Settings to load your account balance.",
+                                 tone: .neutral)
+                self.render()
+                return
+            }
+
             switch result {
             case .success(let snapshot):
                 SettingsStore.shared.cachedSnapshot = snapshot
