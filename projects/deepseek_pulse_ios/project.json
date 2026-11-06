@@ -8,7 +8,7 @@
   "version": "1.0.4",
   "build_number": "5",
   "minimum_ios": "15.0",
-  "description": "App bridge stages the snapshot for the widget extension through a registered handoff URL when the App Group is unavailable.",
+  "description": "Widget views now render live timers, the peak window left today and a clear next-switch label instead of the App Group setup banner.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

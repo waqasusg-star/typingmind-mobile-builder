@@ -35,6 +35,23 @@ struct PulseCountdown: View {
     }
 }
 
+/// The caption above the countdown: "Off-peak in", "Peak in", or nothing.
+struct PulseCountdownCaption: View {
+    var entry: PulseEntry
+    var size: CGFloat = 9
+
+    var body: some View {
+        let label = entry.countdownLabel
+        if !label.isEmpty {
+            Text(label.uppercased())
+                .font(.system(size: size, weight: .semibold))
+                .foregroundColor(.white.opacity(0.72))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        }
+    }
+}
+
 // MARK: - Entry point
 
 struct WidgetEntryView: View {
@@ -105,7 +122,7 @@ struct PulseSmallView: View {
     var entry: PulseEntry
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             Text("DeepSeek")
                 .font(.system(size: 10, weight: .bold))
                 .foregroundColor(.white.opacity(0.85))
@@ -114,7 +131,8 @@ struct PulseSmallView: View {
                 .foregroundColor(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-            PulseCountdown(entry: entry, size: 22)
+            PulseCountdownCaption(entry: entry)
+            PulseCountdown(entry: entry, size: 21)
             Spacer(minLength: 0)
             Text(entry.envelope.balanceLine())
                 .font(.system(size: 13, weight: .semibold))
@@ -148,9 +166,13 @@ struct PulseMediumView: View {
                     .clipShape(Capsule())
             }
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                PulseCountdown(entry: entry, size: 26)
+                VStack(alignment: .leading, spacing: 0) {
+                    PulseCountdownCaption(entry: entry)
+                    PulseCountdown(entry: entry, size: 26)
+                }
+                Spacer(minLength: 4)
                 Text(entry.envelope.balanceLine())
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(.white.opacity(0.92))
                     .lineLimit(1)
             }
@@ -160,8 +182,9 @@ struct PulseMediumView: View {
             }
             Text(entry.footnote)
                 .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.white.opacity(0.72))
+                .foregroundColor(.white.opacity(0.78))
                 .lineLimit(2)
+                .minimumScaleFactor(0.8)
             Spacer(minLength: 0)
             HStack {
                 Text(entry.envelope.balanceCaption(now: entry.date))
