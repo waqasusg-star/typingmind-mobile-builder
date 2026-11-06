@@ -74,21 +74,20 @@ final class WidgetStudioViewController: UIViewController {
         stack.addArrangedSubview(titledCard(title: "Home Screen · small", caption: "State and countdown only.", content: compactCard, height: 150))
         stack.addArrangedSubview(titledCard(title: "Lock Screen", caption: "Single-line state and countdown.", content: lockCard, height: 92))
         stack.addArrangedSubview(titledCard(title: "In-app card", caption: "Same data as the expanded widget layout. This is not a Dynamic Island Live Activity.", content: liveCard, height: 132))
-
         let policy = CardView()
         policy.content.addArrangedSubview(Labels.title("Refresh policy"))
-        policy.content.addArrangedSubview(Labels.caption("The app asks iOS to redraw the widget after a balance refresh or a settings change. iOS controls the actual schedule and normally allows roughly one refresh every 15 minutes, longer in Low Power Mode. The widget makes no network request and never counts down second by second."))
+        policy.content.addArrangedSubview(Labels.caption("The countdown and the peak/off-peak badge are drawn by iOS itself, so they keep changing while your phone is locked and without the app running. The app asks iOS to redraw the widget after a balance refresh or a settings change. iOS controls when that redraw happens and normally allows roughly one every 15 minutes, longer in Low Power Mode. The widget makes no network request and never reads your API key."))
         stack.addArrangedSubview(policy)
 
         let shared = CardView()
-        shared.content.addArrangedSubview(Labels.title("Shared data"))
-        shared.content.addArrangedSubview(Labels.caption("The widget reads only a display snapshot from the App Group " + WidgetShared.appGroupIdentifier + ": your formatted balance, the schedule, the rate labels and a hasAPIKey flag. Your API key stays in the iOS Keychain and is never copied into that file."))
+        shared.content.addArrangedSubview(Labels.title("What the widget can read"))
+        shared.content.addArrangedSubview(Labels.caption("The widget uses the App Group " + WidgetShared.appGroupIdentifier + " when the signed build provides it. This build also keeps its own copy inside the widget extension, so the schedule, the countdown and the last saved balance still appear when the App Group is not granted by the signer. Your API key stays in the iOS Keychain and is never copied into either copy."))
         shared.content.addArrangedSubview(bridgeLabel)
         stack.addArrangedSubview(shared)
 
         let limits = CardView()
         limits.content.addArrangedSubview(Labels.title("Signing requirement"))
-        limits.content.addArrangedSubview(Labels.caption("The app bundle and the DeepSeekPulseWidgets extension must be signed together with the same team and matching App Group profiles. If the group entitlement is missing, the widget shows a setup message instead of numbers."))
+        limits.content.addArrangedSubview(Labels.caption("The app bundle and the DeepSeekPulseWidgets extension must be signed together with the same team. If the signer grants the App Group to one bundle only, the widget still counts down from its own copy but shows your balance only after you open this app once more."))
         stack.addArrangedSubview(limits)
 
         stack.addArrangedSubview(statusLabel)
@@ -117,8 +116,14 @@ final class WidgetStudioViewController: UIViewController {
     /// Writes the shared snapshot when the screen opens, so the widget is not left empty.
     private func writeSnapshot() {
         let result = WidgetBridge.refresh(store: SettingsStore.shared)
-        bridgeLabel.text = result.description
+        bridgeLabel.text = WidgetRefreshHandoff.summary(for: result)
         bridgeLabel.textColor = result.isWritten ? AppColors.offPeak : AppColors.danger
+        // WidgetKit gives no completion callback: ask again once shortly after, in case the first
+        // request was coalesced with a redraw iOS was already doing.
+        DispatchQueue.main.asyncAfter(deadline: .now() + WidgetRefreshHandoff.expectedRefreshDelay) { [weak self] in
+            guard let self = self, self.view.window != nil else { return }
+            WidgetRefreshHandoff.requestRedraw()
+        }
     }
 
     private func render() {
