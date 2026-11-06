@@ -13,6 +13,8 @@ final class DashboardViewController: UIViewController {
     private let windowCard = CardView()
     private let timelineView = DayTimelineView()
     private let windowCaption = Labels.caption("")
+    private let outlookCard = CardView()
+    private let outlookStack = UIStackView()
     private let ratesCard = CardView()
     private let ratesTable = RateTableView()
     private let ratesCaption = Labels.caption("")
@@ -92,12 +94,28 @@ final class DashboardViewController: UIViewController {
 
         contentStack.addArrangedSubview(widgetCard)
 
-        windowCard.content.addArrangedSubview(Labels.title("Peak / off-peak window"))
+        windowCard.content.addArrangedSubview(Labels.title("Peak / off-peak window (UTC)"))
         timelineView.translatesAutoresizingMaskIntoConstraints = false
         timelineView.heightAnchor.constraint(equalToConstant: 78).isActive = true
         windowCard.content.addArrangedSubview(timelineView)
+
+        let legend = UIStackView(arrangedSubviews: [
+            legendItem(title: "Peak (standard price)", color: AppColors.peak),
+            legendItem(title: "Off-peak (discount)", color: AppColors.offPeak),
+            legendItem(title: "Standard only", color: AppColors.textDim)
+        ])
+        legend.axis = .horizontal
+        legend.spacing = 12
+        legend.distribution = .fillProportionally
+        windowCard.content.addArrangedSubview(legend)
         windowCard.content.addArrangedSubview(windowCaption)
         contentStack.addArrangedSubview(windowCard)
+
+        outlookCard.content.addArrangedSubview(Labels.title("Next 7 days (UTC)"))
+        outlookStack.axis = .vertical
+        outlookStack.spacing = 8
+        outlookCard.content.addArrangedSubview(outlookStack)
+        contentStack.addArrangedSubview(outlookCard)
 
         ratesCard.content.addArrangedSubview(Labels.title("Rates per 1M tokens"))
         ratesCard.content.addArrangedSubview(ratesTable)
@@ -111,14 +129,35 @@ final class DashboardViewController: UIViewController {
         pricingButton.addTarget(self, action: #selector(openPricingPage), for: .touchUpInside)
         contentStack.addArrangedSubview(pricingButton)
 
-        let footer = Labels.caption("Version \(appVersion). Rates and the off-peak window are stored on this iPhone and can be edited in Settings. Balance is read from api.deepseek.com/user/balance with your own API key.")
+        let footer = Labels.caption("Version \(appVersion). Schedule and prices are stored on this iPhone and are not downloaded; they were verified by hand on \(RateSeeds.verifiedAsOf). Balance is read from api.deepseek.com/user/balance with your own API key.")
         contentStack.addArrangedSubview(footer)
+    }
+
+    private func legendItem(title: String, color: UIColor) -> UIView {
+        let dot = UIView()
+        dot.backgroundColor = color
+        dot.layer.cornerRadius = 4
+        dot.translatesAutoresizingMaskIntoConstraints = false
+        dot.widthAnchor.constraint(equalToConstant: 8).isActive = true
+        dot.heightAnchor.constraint(equalToConstant: 8).isActive = true
+
+        let label = UILabel()
+        label.text = title
+        label.font = Typography.scaled(10, .semibold, style: .caption2)
+        label.textColor = AppColors.textDim
+        label.numberOfLines = 2
+
+        let stack = UIStackView(arrangedSubviews: [dot, label])
+        stack.axis = .horizontal
+        stack.spacing = 5
+        stack.alignment = .center
+        return stack
     }
 
     private var appVersion: String {
         let info = Bundle.main.infoDictionary
-        let version = info?["CFBundleShortVersionString"] as? String ?? "1.0.0"
-        let build = info?["CFBundleVersion"] as? String ?? "1"
+        let version = info?["CFBundleShortVersionString"] as? String ?? "1.0.1"
+        let build = info?["CFBundleVersion"] as? String ?? "2"
         return "\(version) (\(build))"
     }
 
@@ -139,35 +178,42 @@ final class DashboardViewController: UIViewController {
     private func render() {
         let store = SettingsStore.shared
         let now = Date()
-        let window = store.window
-        let offPeak = window.isOffPeak(at: now)
+        let schedule = store.schedule
+        let state = schedule.state(at: now)
 
         widgetCard.apply(makeWidgetContent(at: now))
+        timelineView.segments = schedule.segments(for: now)
+        timelineView.nowSeconds = PricingSchedule.secondsOfDayUTC(now)
+        windowCaption.text = makeScheduleCaption(schedule: schedule, models: store.models, now: now)
+        rebuildOutlook(schedule: schedule, now: now)
 
-        timelineView.window = window
-        timelineView.nowSeconds = PeakWindow.secondsOfDayUTC(now)
-        windowCaption.text = makeWindowCaption(window: window, models: store.models)
-
-        let signature = "\(window.discountEnabled)|\(window.startMinuteUTC)|\(window.endMinuteUTC)|\(offPeak)|" + store.models.map { model in
-            "\(model.id):\(model.standard.cacheHit):\(model.standard.cacheMiss):\(model.standard.output):\(model.offPeakDiscountPercent)"
+        let modelSignature = store.models.map {
+            "\($0.id):\($0.label):\($0.standard.cacheHit):\($0.standard.cacheMiss):\($0.standard.output):\($0.offPeakDiscountPercent)"
         }.joined(separator: ",")
+        let signature = "\(state.rawValue)|\(schedule.discountsEnabled)|\(modelSignature)"
         if signature != lastRateSignature {
             lastRateSignature = signature
-            ratesTable.update(models: store.models, offPeakActive: offPeak, discountEnabled: window.isActive)
-            ratesCaption.text = makeRatesCaption(window: window, offPeak: offPeak)
+            ratesTable.update(models: store.models,
+                              offPeakActive: state == .offPeak,
+                              discountEnabled: schedule.discountsEnabled)
+            ratesCaption.text = makeRatesCaption(schedule: schedule, state: state, store: store)
         }
     }
 
     private func makeWidgetContent(at now: Date) -> WidgetContent {
         let store = SettingsStore.shared
-        let window = store.window
-        let offPeak = window.isOffPeak(at: now)
+        let schedule = store.schedule
+        let state = schedule.state(at: now)
         let snapshot = store.cachedSnapshot
 
         var content = WidgetContent()
         content.hasKey = store.hasAPIKey
-        content.stateText = window.stateLabel(at: now)
-        content.stateColor = window.isActive ? (offPeak ? AppColors.offPeak : AppColors.peak) : AppColors.textDim
+        content.stateText = state.label
+        switch state {
+        case .peak: content.stateColor = AppColors.peak
+        case .offPeak: content.stateColor = AppColors.offPeak
+        case .standard: content.stateColor = AppColors.textDim
+        }
 
         if let info = snapshot?.primary {
             content.totalAmount = MoneyFormat.amount(info.totalBalance, currency: info.currency)
@@ -192,43 +238,115 @@ final class DashboardViewController: UIViewController {
             content.updatedLine = "Key stored in the iOS Keychain"
         }
 
-        content.detailLine = scheduleLine(window: window, offPeak: offPeak, now: now)
+        content.detailLine = countdownLine(schedule: schedule, now: now)
+        content.noteLine = notesLine(schedule: schedule, store: store, now: now)
         content.clockLine = "Now \(ClockFormat.utcTimeLabel(now)) · \(ClockFormat.localTimeLabel(now)) local"
         return content
     }
 
-    private func scheduleLine(window: PeakWindow, offPeak: Bool, now: Date) -> String {
-        guard window.isActive else {
-            return "Off-peak discount schedule is switched off — standard rates apply all day."
+    private func countdownLine(schedule: PricingSchedule, now: Date) -> String {
+        guard schedule.discountsEnabled else {
+            return "Off-peak discounts are switched off — standard price applies around the clock."
         }
-        guard let next = window.nextTransition(after: now) else {
-            return "Off-peak \(ClockFormat.minuteLabel(window.startMinuteUTC))–\(ClockFormat.minuteLabel(window.endMinuteUTC)) UTC"
+        guard let next = schedule.nextTransition(after: now) else {
+            return "No peak window is configured, so every hour is off-peak."
         }
-        let targetMinute = next.becomesOffPeak ? window.startMinuteUTC : window.endMinuteUTC
         let seconds = max(0, Int(next.date.timeIntervalSince(now).rounded()))
-        let localTarget = ClockFormat.localLabel(minuteUTC: targetMinute, on: now)
-        let prefix = next.becomesOffPeak ? "Off-peak starts" : "Off-peak ends"
-        return "\(prefix) \(ClockFormat.minuteLabel(targetMinute)) UTC (\(localTarget) local) · in \(ClockFormat.countdown(seconds: seconds))"
+        let what = next.becomesPeak ? "Peak starts" : "Off-peak starts"
+        let dayTag = next.daysAhead == 0 ? "today" : (next.daysAhead == 1 ? "tomorrow" : "in \(next.daysAhead) days")
+        return "\(what) \(ClockFormat.utcStamp(next.date)) (\(ClockFormat.localStamp(next.date)) local · \(dayTag)) — in \(ClockFormat.countdown(seconds: seconds))"
     }
 
-    private func makeWindowCaption(window: PeakWindow, models: [ModelRate]) -> String {
-        guard window.isActive else {
-            return "Standard (peak) pricing is used at all hours. Turn the schedule back on in Settings if DeepSeek publishes off-peak discounts again."
+    private func notesLine(schedule: PricingSchedule, store: SettingsStore, now: Date) -> String {
+        var notes: [String] = []
+        let outsideCheckedRange = schedule.holidays.coverageStart != nil
+        let reason = outsideCheckedRange ? "outside the checked holiday range" : "holiday calendar not on file"
+
+        if schedule.isUncertain(at: now) {
+            notes.append("Weekday peaks assume no PRC public holiday today (\(reason)).")
+        } else if let next = schedule.nextTransition(after: now), next.uncertain {
+            notes.append("Countdown assumes \(PricingSchedule.dayKey(next.date)) is not a PRC public holiday (\(reason)).")
         }
-        let startLocal = ClockFormat.localLabel(minuteUTC: window.startMinuteUTC)
-        let endLocal = ClockFormat.localLabel(minuteUTC: window.endMinuteUTC)
+        if store.scheduleIsCustom {
+            notes.append("Custom schedule — the official windows were verified \(RateSeeds.verifiedAsOf).")
+        }
+        return notes.joined(separator: " ")
+    }
+
+    private func makeScheduleCaption(schedule: PricingSchedule, models: [ModelRate], now: Date) -> String {
+        guard schedule.discountsEnabled else {
+            return "Off-peak discounts are switched off, so one standard price applies around the clock. Holiday data: \(schedule.holidays.summary)."
+        }
         let discounts = models.map { "\($0.name) \(Int($0.clampedDiscount.rounded()))%" }.joined(separator: " · ")
-        return "Off-peak \(ClockFormat.minuteLabel(window.startMinuteUTC))–\(ClockFormat.minuteLabel(window.endMinuteUTC)) UTC (\(startLocal)–\(endLocal) local). Discounts: \(discounts)."
+        var parts: [String] = [
+            "Peak \(schedule.weekdaySummary) \(schedule.intervalSummaryUTC)",
+            "your local time \(schedule.intervalSummaryLocal(on: now))",
+            "off-peak \(discounts) off"
+        ]
+        let day = schedule.daySchedule(for: now)
+        if day.kind == .holiday {
+            parts.append("today is a listed PRC public holiday → off-peak all day")
+        } else if day.intervals.isEmpty {
+            parts.append("today has no peak window → off-peak all day")
+        }
+        parts.append("holidays: \(schedule.holidays.summary)")
+        return parts.joined(separator: " · ")
     }
 
-    private func makeRatesCaption(window: PeakWindow, offPeak: Bool) -> String {
-        var text = offPeak
-            ? "Off-peak prices are active now, so the OFF-PEAK column is highlighted."
-            : "Standard peak prices apply now, so the PEAK column is highlighted."
-        if !window.isActive {
-            text = "The off-peak column is inactive because the discount schedule is switched off."
+    private func makeRatesCaption(schedule: PricingSchedule, state: PricingState, store: SettingsStore) -> String {
+        var text: String
+        switch state {
+        case .offPeak: text = "Off-peak prices are active now, so the OFF-PEAK column is highlighted."
+        case .peak: text = "Peak (standard) prices are active now, so the PEAK column is highlighted."
+        case .standard: text = "The off-peak column is inactive because the discount schedule is switched off."
         }
-        return text + " " + RateSeeds.sourceNote + "."
+        if store.ratesAreCustom {
+            text += " These rates are your custom values, not the verified defaults."
+        } else {
+            text += " Verified by hand on \(RateSeeds.verifiedAsOf); the app does not download prices."
+        }
+        text += " Source: \(schedule.sourceURL)"
+        return text
+    }
+
+    private func rebuildOutlook(schedule: PricingSchedule, now: Date) {
+        for view in outlookStack.arrangedSubviews {
+            outlookStack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+        for (offset, day) in schedule.outlook(from: now, days: 7).enumerated() {
+            outlookStack.addArrangedSubview(outlookRow(day: day, offset: offset, schedule: schedule, now: now))
+        }
+    }
+
+    private func outlookRow(day: DaySchedule, offset: Int, schedule: PricingSchedule, now: Date) -> UIView {
+        let dayLabel = UILabel()
+        let date = PricingSchedule.date(fromDayKey: day.key) ?? now
+        dayLabel.text = ClockFormat.utcDayLabel(date) + (offset == 0 ? " · today" : "")
+        dayLabel.font = Typography.scaled(12, .semibold, style: .footnote)
+        dayLabel.textColor = AppColors.text
+        dayLabel.widthAnchor.constraint(equalToConstant: 108).isActive = true
+
+        let detail = UILabel()
+        detail.font = Typography.scaled(11.5, .medium, style: .caption1)
+        detail.numberOfLines = 0
+        if !schedule.discountsEnabled {
+            detail.text = "standard all day"
+            detail.textColor = AppColors.textDim
+        } else if day.intervals.isEmpty {
+            detail.text = day.kind == .holiday ? "PRC public holiday · off-peak" : "off-peak all day"
+            detail.textColor = day.kind == .holiday ? AppColors.offPeak : AppColors.textDim
+        } else {
+            let windows = day.intervals.map { $0.utcLabel }.joined(separator: ", ")
+            detail.text = windows + " UTC" + (day.kind == .unverified ? " · unverified" : "")
+            detail.textColor = AppColors.peak
+        }
+
+        let row = UIStackView(arrangedSubviews: [dayLabel, detail])
+        row.axis = .horizontal
+        row.spacing = 10
+        row.alignment = .firstBaseline
+        return row
     }
 
     // MARK: - Actions
@@ -256,7 +374,9 @@ final class DashboardViewController: UIViewController {
     }
 
     @objc private func openPricingPage() {
-        guard let url = URL(string: "https://api-docs.deepseek.com/quick_start/pricing") else { return }
+        let target = URL(string: SettingsStore.shared.schedule.sourceURL)
+            ?? URL(string: "https://api-docs.deepseek.com/quick_start/pricing/")
+        guard let url = target else { return }
         UIApplication.shared.open(url)
     }
 

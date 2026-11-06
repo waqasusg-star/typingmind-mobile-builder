@@ -1,25 +1,46 @@
 # DeepSeek Pulse — iPhone (native Swift/UIKit)
 
-Version 1.0.0 (build 1). Bundle ID `com.waqas.deepseekpulse`, minimum iOS 15.0.
+Version 1.0.1 (build 2). Bundle ID `com.waqas.deepseekpulse`, minimum iOS 15.0.
 
 ## What it shows
 
 - A widget-style card with your DeepSeek API account balance: total, granted and topped-up amounts, currency and API availability, read from `GET https://api.deepseek.com/user/balance` with your own API key.
-- Whether pricing is currently **peak** or **off-peak**, with a live countdown to the next switch, the window in UTC and in your local time, and a 24-hour band showing where the current moment sits.
-- A rate table per model (`cache hit`, `cache miss`, `output`) in USD per 1M tokens, with the active column highlighted.
-- An in-app editor for the API key (iOS Keychain), the off-peak window and the rates.
+- Whether pricing is currently **peak** or **off-peak**, with a live countdown to the next switch (days included), the window in UTC and in your local time, a 24-hour band for today and a 7-day outlook that shows weekends and listed holidays.
+- A rate table for `deepseek-flash` (V4.1-Flash-1017) and `deepseek-v4-pro` (V4-Pro-0813) with cache-hit, cache-miss and output prices in USD per 1M tokens, and the active peak or off-peak column highlighted.
+- An in-app editor for the API key (iOS Keychain), the peak windows, the peak weekdays, the PRC holiday list and the rates.
 
-## The pricing schedule is editable seed data
+## The official schedule and prices (verified 2026-11-06)
 
-The seeded values come from DeepSeek's published standard schedule together with the documented off-peak discounts (16:30–00:30 UTC, 50% off `deepseek-chat`, 75% off `deepseek-reasoner`). The app does **not** download prices, so confirm and correct them in **Settings → Standard rates** against <https://api-docs.deepseek.com/quick_start/pricing>. If DeepSeek withdrew off-peak discounts, switch the schedule off and the app reports standard pricing everywhere.
+Peak = Monday–Friday **01:00–04:00** and **06:00–10:00 UTC**, excluding Chinese public holidays. Every other hour, all weekends and every Chinese public holiday is off-peak (50% off) for both models:
 
-The API key is written to the iOS Keychain and sent only to `api.deepseek.com`. It is never bundled in source.
+| model | hit (peak / off-peak) | miss (peak / off-peak) | output (peak / off-peak) |
+| --- | --- | --- | --- |
+| deepseek-flash · V4.1-Flash-1017 | 0.006 / 0.003 | 0.30 / 0.15 | 1.20 / 0.60 |
+| deepseek-v4-pro · V4-Pro-0813 | 0.044 / 0.022 | 1.32 / 0.66 | 3.96 / 1.98 |
+
+Source: <https://api-docs.deepseek.com/quick_start/pricing/>. These values live in the app and are **not downloaded**; a human checked them on that date. Edit them in Settings if they change.
+
+### Chinese public holidays are not bundled
+
+No holiday list is included or fetched, so the app cannot know a Chinese public holiday by itself. It therefore:
+
+- treats every weekday as a peak day by default and labels such days **unverified** — in the widget, the schedule caption and the 7-day outlook;
+- lets you add the dates you checked in the official holiday notice (Settings → PRC public holidays), each of which becomes off-peak all day;
+- lets you enter the date range you actually checked; days outside that range stay **unverified** instead of pretending accuracy.
+
+## Custom values
+
+Rates, peak windows, peak weekdays and the discount switch are editable. When they differ from the verified defaults the dashboard says so explicitly ("Custom schedule", "your custom values"), so verified defaults and your own assumptions are never mixed up. "Restore official schedule" keeps your holiday dates and restores the verified windows.
+
+## Storage and privacy
+
+The API key is written to the iOS Keychain and sent only to `api.deepseek.com/user/balance` as a Bearer token. It is never bundled in source, logged or sent anywhere else. The last balance is cached locally for offline display.
 
 ## Build
 
-`xcodegen generate` (reads the generated project spec), then build the app target in Xcode. GitHub builds publish a versioned **unsigned** arm64 IPA, a matching source ZIP, `Build-Report.json` and `SHA256SUMS.txt`. The unsigned IPA MUST BE SIGNED BEFORE INSTALLATION.
+XcodeGen reads the generated project spec, then build the app target. GitHub builds publish a versioned **unsigned** arm64 IPA, a matching source ZIP, `Build-Report.json` and `SHA256SUMS.txt`. The unsigned IPA MUST BE SIGNED BEFORE INSTALLATION.
 
 ## Limits
 
-- Home-screen WidgetKit widgets need an app-extension target and an App Group. This controlled pipeline builds a single app target, so the widget is rendered inside the app rather than on the Home Screen.
-- `Tests/LogicTests.swift` checks the schedule, rate, formatting and balance-parsing logic only. It is not an app, UI or physical-device test suite, and no real API call is made during the build.
+- **No Home-Screen WidgetKit widget.** A real widget needs an app-extension target and an App Group, which this controlled single-target pipeline does not build; the widget is the in-app card.
+- `Tests/LogicTests.swift` exercises the schedule, transition, holiday, rate, formatting and balance-parsing logic. It is not an app/UI or physical-device suite, and the build makes no live DeepSeek API call.
