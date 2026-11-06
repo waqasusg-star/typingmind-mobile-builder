@@ -698,7 +698,7 @@ enum BalanceParser {
 
 // MARK: - Request policy
 
-enum BalanceFetchError: Equatable {
+enum BalanceFetchError: Error, Equatable {
     case missingKey
     case unauthorized
     case rateLimited
