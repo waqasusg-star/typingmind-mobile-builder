@@ -8,7 +8,7 @@
   "version": "1.0.1",
   "build_number": "2",
   "minimum_ios": "15.0",
-  "description": "DeepSeek Pulse 1.0.1: verified 2026-11-06 prices and schedule (Mon-Fri 01:00-04:00 and 06:00-10:00 UTC), verified PRC holiday calendar 2026-2027, weekend-always-off-peak model, multi-day countdown and foundation_policy component tests.",
+  "description": "DeepSeek Pulse 1.0.1: verified 2026-11-06 prices and schedule (Mon-Fri 01:00-04:00 and 06:00-10:00 UTC), verified PRC holiday calendar 2026-2027, weekend-always-off-peak model, multi-day countdown, foundation_policy tests and a source-only XcodeGen spec for local rebuilds.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

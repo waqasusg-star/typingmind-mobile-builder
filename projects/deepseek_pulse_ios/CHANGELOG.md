@@ -2,7 +2,7 @@
 
 # iPhone 1.0.1 / build 2
 
-Corrects obsolete pricing and schedule data, adds a verified PRC holiday calendar and makes the assumption state honest. The not-yet-delivered change set keeps version 1.0.1 build 2.
+Corrects obsolete pricing and schedule data, adds a verified PRC holiday calendar, makes the assumption state honest, and makes the source archive independently rebuildable. The not-yet-delivered change set keeps version 1.0.1 build 2.
 
 ## Fixed
 
@@ -16,7 +16,9 @@ Corrects obsolete pricing and schedule data, adds a verified PRC holiday calenda
 - **Verified vs custom is explicit.** Custom schedules and custom rates are labelled on the dashboard and in the rates caption; "Restore official schedule and verified holidays" reinstates the verified windows and the 2026–2027 list.
 - **Migration schema 1/2 → 3** drops the obsolete window and retired prices, installs the verified schedule, prices and holiday list, keeps the Keychain API key and the cached balance, and shows a one-time upgrade notice in Settings.
 - **Settings validation**: windows must be HH:MM inside one UTC day, at least one peak day while discounts are on, the coverage range must be two ordered yyyy-MM-dd dates, every holiday date is parsed, and every rate must be a non-negative number. Saving an unchanged coverage range keeps its original verification date instead of restamping it.
-- **Structure for testability.** The UIKit-free logic moved to `Sources/RequestPolicy.swift` (endpoint allow-list, bearer header building, status mapping included); `Sources/DeepSeekKit.swift` is now a comment-only placeholder so nothing is defined twice; `Tests/LogicTests.swift` is a comment-only redirect and the harness lives in `Tests/PolicyTests.swift`.
+- **Structure for testability.** The UIKit-free logic moved to `Sources/RequestPolicy.swift` (endpoint allow-list, bearer header building and status mapping included); `Sources/DeepSeekKit.swift` is now a comment-only placeholder so nothing is defined twice; `Tests/LogicTests.swift` is a comment-only redirect and the harness lives in `Tests/PolicyTests.swift`.
+- **Source archive is now independently rebuildable.** Added `project.yml`, a source-only XcodeGen specification carrying the same identity (bundle `com.waqas.deepseekpulse`, scheme/product `DeepSeekPulse`), version 1.0.1, build 2, iOS 15.0 deployment target, the `Sources` folder and a generated `Config/Info.plist` (`UILaunchScreen`, dark UI style, iPhone portrait plus iPad orientations). No script, entitlement, dependency or worker-policy change. README now documents the exact `xcodegen`, `xcodebuild`, unsigned-IPA packaging and `swiftc` test commands.
+- **Initializer hardening.** Custom views and text fields are constructed with explicit `init(frame:)` calls instead of relying on inherited `init()`, and weight/font arguments are written explicitly rather than as ternary implicit members. This targets the compile failure of the earlier 1.0.1 attempt whose diagnostics were truncated.
 
 ## Preserved
 
@@ -25,7 +27,7 @@ Corrects obsolete pricing and schedule data, adds a verified PRC holiday calenda
 
 ## Verification
 
-- `Tests/PolicyTests.swift` (Foundation, compiled with `Sources/RequestPolicy.swift` via test profile `foundation_policy`) covers: both weekday windows and exact boundaries; holiday suppression plus range edges (2026-01-01, 2026-02-23, 2026-10-07, 2027-10-07 listed; 2026-02-24, 2027-10-08 working); every weekend day of 2026–2027; multi-day countdowns (Friday → Monday 62.5 h, New Year 2026 → Monday 96.5 h, Spring Festival follow-up 17 h); the year-end switch to an unverified 2028 calendar with `uncertain` transitions and the calendar warning; full 24-hour band coverage on working days, weekends, holidays and unverified days; local conversion at UTC, +05:30, +08:00 and −05:00; published peak and off-peak prices for both models with discount clamping; number formatting; the documented balance payload plus numeric/partial/two-currency variants and a Codable round-trip; and the request policy (endpoint allow-list, lookalike host, cleartext, bearer header, status mapping).
+- `Tests/PolicyTests.swift` (Foundation, compiled with `Sources/RequestPolicy.swift` via test profile `foundation_policy`, declared in `project.json` as `policy_test_sources`) covers: both weekday windows and exact boundaries; holiday suppression plus range edges (2026-01-01, 2026-02-23, 2026-10-07, 2027-10-07 listed; 2026-02-24, 2027-10-08 working); every weekend day of 2026–2027; multi-day countdowns (Friday → Monday 62.5 h, New Year 2026 → Monday 96.5 h, Spring Festival follow-up 17 h); the year-end switch to an unverified 2028 calendar with `uncertain` transitions and the calendar warning; full 24-hour band coverage on working days, weekends, holidays and unverified days; local conversion at UTC, +05:30, +08:00 and −05:00; published peak and off-peak prices for both models with discount clamping; number formatting; the documented balance payload plus numeric/partial/two-currency variants and a Codable round-trip; and the request policy (endpoint allow-list, lookalike host, cleartext, bearer header, status mapping).
 - Executed results are reported only from the real build report and log. Component checks are not an app/UI/device suite, no DeepSeek account is called during the build, and no signing-service compatibility is claimed.
 
 ## Known limits

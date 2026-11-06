@@ -1,0 +1,56 @@
+# Source-only XcodeGen specification for DeepSeek Pulse.
+#
+# The reviewed GitHub worker does not read this file: it generates its own controlled
+# native-project.json and Info.plist before running xcodebuild. This spec exists so the
+# delivered SOURCE ZIP can be rebuilt independently on a Mac:
+#
+#   xcodegen generate                    # writes Config/Info.plist and DeepSeekPulse.xcodeproj
+#   open DeepSeekPulse.xcodeproj         # then pick your own signing team and run on a device
+#
+# It contains no credentials, entitlements, scripts or package dependencies.
+
+name: DeepSeekPulse
+
+options:
+  bundleIdPrefix: com.waqas
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+
+targets:
+  DeepSeekPulse:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    settings:
+      base:
+        PRODUCT_NAME: DeepSeekPulse
+        PRODUCT_BUNDLE_IDENTIFIER: com.waqas.deepseekpulse
+        MARKETING_VERSION: "1.0.1"
+        CURRENT_PROJECT_VERSION: "2"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_BITCODE: NO
+    info:
+      path: Config/Info.plist
+      properties:
+        CFBundleDisplayName: DeepSeek Pulse
+        CFBundleShortVersionString: "1.0.1"
+        CFBundleVersion: "2"
+        UILaunchScreen: {}
+        UIUserInterfaceStyle: Dark
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
