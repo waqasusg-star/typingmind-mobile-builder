@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Correct the stale-boundary expectation and add executed checks for the registered deep link, bounded timeline planner, account generation policy and badge labels.",
+  "description": "Gate accessory widget families behind iOS 16 availability while keeping the app deployment target at iOS 15.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
