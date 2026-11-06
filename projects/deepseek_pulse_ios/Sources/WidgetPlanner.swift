@@ -1,4 +1,9 @@
-// Retired in 1.0.3 (build 4) - kept only as a marker, and renamed so it does not collide with
-// Shared/WidgetPlanner.swift. Swift rejects two files with the same basename inside one target even
-// when one declares nothing, which broke the app compile. The real implementation is in
-// Shared/WidgetPlanner.swift, compiled into both the app and the widget extension.
+// Retired in 1.0.3 (build 4).
+//
+// WidgetPlanner now lives in Shared/WidgetPlannerCore.swift, because the DeepSeekPulseWidgets
+// extension compiles WidgetSources + Shared + Sources/RequestPolicy.swift and cannot see Sources/.
+// This file declares no symbols.
+//
+// The shared copy is named *Core.swift because Swift rejects two files with the same basename inside
+// one target ("Filename WidgetPlanner.swift used twice"), and Sources/ plus Shared/ are both part of
+// the app target.

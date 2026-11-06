@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Add uniquely named marker files replacing the colliding Sources stubs.",
+  "description": "Rename the shared planner and policy to WidgetPlannerCore/WidgetPolicyCore so no two files in the app or widget target share a basename.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
