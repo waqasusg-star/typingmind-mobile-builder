@@ -8,7 +8,7 @@
   "version": "1.0.2",
   "build_number": "3",
   "minimum_ios": "15.0",
-  "description": "DeepSeek Pulse 1.0.2 (build 3): adds widget-sized layouts (full, compact, Lock Screen, Live Activity card), a shared Foundation widget planner with executed checks, and a widget refresh/deep-link policy. Preserves bundle ID, Keychain key and saved data.",
+  "description": "DeepSeek Pulse 1.0.2 (build 3): widget-sized layouts plus a Widget Studio preview screen and a settings menu entry.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
