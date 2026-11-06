@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Replace the leftover Sources/WidgetPlanner.swift and Sources/WidgetPolicy.swift bodies with comment-only stubs; the real types now live in Shared/.",
+  "description": "Add the shared WidgetPlanner and WidgetPolicy used by both the app and the widget extension.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
