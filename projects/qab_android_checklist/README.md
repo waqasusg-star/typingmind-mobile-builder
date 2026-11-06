@@ -34,7 +34,7 @@ delivered SOURCE ZIP:
 adb install -r app-release.apk
 ```
 
-The reviewed builder pipeline compiles, runs JUnit, runs lint, and signs with the repository's
+The reviewed builder pipeline compiles, runs JUnit and lint, then signs with the repository's
 existing Android release key. No credentials are stored in this project.
 
 ## Limits

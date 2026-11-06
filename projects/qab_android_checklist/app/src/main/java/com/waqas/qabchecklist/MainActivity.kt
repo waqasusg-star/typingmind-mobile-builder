@@ -27,6 +27,8 @@ import android.widget.TextView
 /**
  * Single-screen local-only checklist for builder acceptance testing.
  * Framework views only: no networking, no accounts, no analytics, no ads.
+ * Minimum sizing uses the framework View#setMinimumHeight/Width (API 1) so the
+ * app stays valid on minSdk 26.
  */
 class MainActivity : Activity() {
 
@@ -105,9 +107,9 @@ class MainActivity : Activity() {
         }
         column.addView(summaryLabel)
 
+        // Height comes from the layout params below, which keeps API 26 compatibility.
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
-            minHeight = dp(8)
             progressTintList = ColorStateList.valueOf(accent)
             progressBackgroundTintList = ColorStateList.valueOf(border)
             contentDescription = "0 percent complete"
@@ -122,7 +124,7 @@ class MainActivity : Activity() {
             filters = arrayOf<InputFilter>(InputFilter.LengthFilter(INPUT_LIMIT))
             imeOptions = EditorInfo.IME_ACTION_DONE
             maxLines = 3
-            minHeight = dp(48)
+            minimumHeight = dp(48)
             setTextColor(textPrimary)
             setHintTextColor(textSecondary)
             setPadding(dp(14), dp(12), dp(14), dp(12))
@@ -142,8 +144,8 @@ class MainActivity : Activity() {
             text = "Add task"
             isAllCaps = false
             textSize = 16f
-            minHeight = dp(48)
-            minWidth = dp(96)
+            minimumHeight = dp(48)
+            minimumWidth = dp(96)
             setTextColor(Color.WHITE)
             background = rounded(accent, accent, 12)
             contentDescription = "Add task"
@@ -176,7 +178,7 @@ class MainActivity : Activity() {
                 text = option.label
                 isAllCaps = false
                 textSize = 14f
-                minHeight = dp(48)
+                minimumHeight = dp(48)
                 setOnClickListener {
                     priority = option
                     statusMessage = "Priority set to " + option.label + "."
@@ -218,7 +220,7 @@ class MainActivity : Activity() {
             text = "Clear completed"
             isAllCaps = false
             textSize = 14f
-            minHeight = dp(48)
+            minimumHeight = dp(48)
             setTextColor(textPrimary)
             background = rounded(surface, border, 12)
             contentDescription = "Clear completed tasks"
@@ -233,7 +235,7 @@ class MainActivity : Activity() {
             text = "Restore recovery copy"
             isAllCaps = false
             textSize = 14f
-            minHeight = dp(48)
+            minimumHeight = dp(48)
             setTextColor(accent)
             background = rounded(surface, accent, 12)
             setOnClickListener { confirmRestore() }
@@ -338,8 +340,8 @@ class MainActivity : Activity() {
             text = "Delete"
             isAllCaps = false
             textSize = 13f
-            minWidth = dp(48)
-            minHeight = dp(48)
+            minimumWidth = dp(48)
+            minimumHeight = dp(48)
             setTextColor(danger)
             background = rounded(Color.TRANSPARENT, danger, 12)
             contentDescription = "Delete " + task.title

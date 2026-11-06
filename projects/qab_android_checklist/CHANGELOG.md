@@ -8,3 +8,5 @@
 - Light/dark themes and accessibility labels/live regions.
 - Fixed a unit-test assertion that compared a Task to a Boolean; the no-op toggle path is now
   asserted through the task state instead.
+- Replaced API 29 `setMinHeight`/`setMinWidth` setters with the API 1 `minimumHeight`/
+  `minimumWidth` properties and removed the ProgressBar minimum height so lint passes on minSdk 26.
