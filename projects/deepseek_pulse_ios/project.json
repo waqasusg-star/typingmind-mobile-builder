@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Add a pure Foundation account-generation policy so stale in-flight balance responses cannot repopulate a removed or changed account.",
+  "description": "Correct the shared deep link to the registered com.waqas.deepseekpulse scheme and add a pure Foundation bounded timeline planner covering real pricing transitions and cache-stale crossing.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
