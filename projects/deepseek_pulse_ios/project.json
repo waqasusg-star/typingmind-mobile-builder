@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Correct the shared deep link to the registered com.waqas.deepseekpulse scheme and add a pure Foundation bounded timeline planner covering real pricing transitions and cache-stale crossing.",
+  "description": "Rename the fresh badge to RECENT because the widget shows cached data, not a live connection.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

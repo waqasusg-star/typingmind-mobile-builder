@@ -56,8 +56,8 @@ enum WidgetDataState: String, Codable, Equatable {
 
     var shortLabel: String {
         switch self {
-        case .fresh: return "LIVE"
-        case .stale: return "STALE"
+        case .fresh: return "RECENT"
+        case .stale: return "CACHED"
         case .groupUnavailable: return "SETUP"
         case .empty: return "NO DATA"
         case .incompatible: return "UPDATE"
