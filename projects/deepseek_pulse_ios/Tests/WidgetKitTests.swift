@@ -117,11 +117,49 @@ func widgetKitChecks() throws {
     try expect(WidgetDataState.groupUnavailable.isUsable == false, "group unavailable is not usable")
     try expect(WidgetDataState.groupUnavailable.explainer.contains("App Group"), "group state explains the entitlement")
     try expect(WidgetSnapshotEnvelope.failed(.groupUnavailable).balanceLine() == "--", "unavailable shows a placeholder")
-    try expect(WidgetDataState.fresh.shortLabel == "RECENT", "fresh badge says RECENT, not LIVE")
+    try expect(WidgetDataState.fresh.shortLabel == "UPDATED", "fresh badge says UPDATED, not LIVE")
     try expect(WidgetDataState.stale.shortLabel == "CACHED", "stale badge says CACHED")
     try expect(WidgetDataState.empty.shortLabel == "NO DATA", "empty badge")
     try expect(WidgetDataState.incompatible.shortLabel == "UPDATE", "incompatible badge")
     try expect(WidgetDataState.corrupt.shortLabel == "UNREADABLE", "corrupt badge")
+
+    // MARK: Storage tiers — the widget's own copy keeps it live without an App Group
+
+    try expect(WidgetCacheTier.appGroup.rawValue == "appGroup", "the group tier is named appGroup")
+    try expect(WidgetCacheTier.extensionLocal.rawValue == "extensionLocal", "the local tier is named extensionLocal")
+    try expect(WidgetSnapshotStore.tiers == [.appGroup, .extensionLocal], "the group tier is preferred, local is the fallback")
+    try expect(WidgetShared.localCacheFileName != WidgetShared.cacheFileName, "the two tiers use different file names")
+
+    // An empty location with no App Group container must not make the widget look broken forever.
+    let emptyLocation = WidgetCacheLocation(appGroupIdentifier: "group.com.waqas.deepseekpulse.tests.absent")
+    let emptyLoad = WidgetSnapshotStore.load(location: emptyLocation, now: now)
+    try expect(!emptyLoad.envelope.state.isUsable, "a missing container yields no fake data")
+    try expect(emptyLoad.tier == nil, "no tier is reported when nothing decodes")
+
+    // The built-in schedule payload is what the extension writes when the app never did.
+    let seeded = WidgetSnapshotPayload.builtIn(now: now)
+    try expect(seeded.schemaVersion == WidgetShared.schemaVersion, "the built-in payload uses the current schema")
+    try expect(seeded.balance == nil, "the built-in payload carries no balance")
+    try expect(seeded.balanceFetchedAt == nil, "the built-in payload carries no fetch time")
+    try expect(seeded.hasAPIKey == false, "the built-in payload never claims an API key")
+    try expect(seeded.schedule == RateSeeds.schedule, "the built-in payload carries the verified schedule")
+    try expect(!seeded.models.isEmpty, "the built-in payload carries the rate labels")
+    let seededEnvelope = WidgetCacheCodec.envelope(for: seeded, now: now)
+    try expect(seededEnvelope.state == .fresh, "the built-in payload decodes as fresh")
+    try expect(seededEnvelope.balanceLine() == "No key", "the built-in payload states there is no key, it does not fake a balance")
+
+    // MARK: Live countdown caption
+
+    let prePeak = WidgetPlanner.snapshot(schedule: schedule, at: utc("2026-11-10T00:30:00"))
+    try expect(WidgetPlanner.countdownCaption(snapshot: prePeak, discountsEnabled: true) == "Peak in", "before a peak start the caption says Peak in")
+    let preOffPeak = WidgetPlanner.snapshot(schedule: schedule, at: utc("2026-11-10T02:00:00"))
+    try expect(WidgetPlanner.countdownCaption(snapshot: preOffPeak, discountsEnabled: true) == "Off-peak in", "inside a peak window the caption says Off-peak in")
+    try expect(WidgetPlanner.countdownCaption(snapshot: prePeak, discountsEnabled: false) == "", "with discounts off there is no countdown caption")
+    // The caption and the footnote must describe the same switch, or the widget contradicts itself.
+    try expect(WidgetPlanner.switchCaption(snapshot: prePeak) == "Peak starts", "the footnote names the same switch as the caption")
+    try expect(prePeak.nextSwitchAt == utc("2026-11-10T01:00:00"), "the countdown targets the real next transition")
+    try expect(WidgetPlanner.secondsUntil(now: utc("2026-11-10T00:30:00"), target: utc("2026-11-10T01:00:00")) == 1800, "countdown seconds to the switch")
+    try expect(WidgetPolicy.deepLinkURL() != nil, "the widget has a tappable link")
 
     // MARK: Calendar and pricing boundaries
 
