@@ -32,10 +32,14 @@ final class DashboardViewController: UIViewController {
                                                    style: .plain,
                                                    target: self,
                                                    action: #selector(refreshTapped))
-    private lazy var settingsItem = UIBarButtonItem(image: UIImage(systemName: "gearshape"),
-                                                    style: .plain,
-                                                    target: self,
-                                                    action: #selector(settingsTapped))
+    private lazy var settingsItem = UIBarButtonItem(menu: UIMenu(title: "Options", children: [
+        UIAction(title: "Settings", image: UIImage(systemName: "gearshape")) { [weak self] _ in
+            self?.settingsTapped()
+        },
+        UIAction(title: "Widgets & Live Activity", image: UIImage(systemName: "square.grid.2x2")) { [weak self] _ in
+            self?.widgetStudioTapped()
+        }
+    ]))
 
     override func viewDidLoad() {
         super.viewDidLoad()
