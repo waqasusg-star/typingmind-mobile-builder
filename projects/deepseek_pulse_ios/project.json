@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Share the keychain mutation-routing policy so update/add decisions are testable, and make removal invalidate after delete OR item-not-found even when no key was loaded.",
+  "description": "Keychain writes update the existing item in place and add only when absent, so a failed write can never destroy the stored key.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
