@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Tests cover all four transitions in a trading day, reloadDate bounds, explicit key save/removal results, and the existing stale and account rules.",
+  "description": "Add explicit key save and removal result tests plus non-discount timeline coverage.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

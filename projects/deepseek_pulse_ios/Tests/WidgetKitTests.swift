@@ -243,7 +243,39 @@ func widgetKitChecks() throws {
                                                      dataFetchedAt: planFetched)
     try expect(quietPlan.filter { $0.reason == .peakSwitch }.isEmpty, "a non-discount schedule has no peak switches")
     try expect(!quietPlan.isEmpty, "a non-discount plan still has entries")
+    try expect(quietPlan.first?.reason == .now, "a non-discount plan still starts at now")
     try expect(quietPlan.count <= WidgetTimelinePlanner.maximumEntries, "the non-discount plan is bounded")
+    try expect(quietPlan.contains { $0.reason == .cacheStale }, "a non-discount plan still marks the stale crossing")
+
+    // MARK: Explicit key store and removal results
+
+    // A failed write must never look like success, and must never clear the cache.
+    let failedSave = KeySaveResult.storeFailed
+    try expect(failedSave.isStored == false, "a store failure is not stored")
+    try expect(failedSave.shouldClearCachedBalance == false, "a store failure does not clear the cache")
+    try expect(KeyStoreDecision.isFailure(failedSave), "a store failure is reported to the caller")
+    try expect(KeyStoreDecision.invalidates(failedSave) == false, "a store failure does not invalidate the account")
+
+    let sameKeySave = KeySaveResult.saved(.unchanged)
+    try expect(sameKeySave.isStored, "saving the same key is stored")
+    try expect(KeyStoreDecision.isFailure(sameKeySave) == false, "saving the same key is not a failure")
+    try expect(sameKeySave.shouldClearCachedBalance == false, "saving the same key keeps the cache")
+
+    let changedKeySave = KeySaveResult.saved(.changed)
+    try expect(changedKeySave.isStored, "saving a different key is stored")
+    try expect(changedKeySave.shouldClearCachedBalance, "saving a different key clears the cache")
+    try expect(KeyStoreDecision.invalidates(changedKeySave), "saving a different key invalidates the account")
+    try expect(changedKeySave.didChangeAccount, "saving a different key changes the account")
+
+    let deleteFailed = KeyRemovalResult.deleteFailed
+    try expect(deleteFailed.isRemoved == false, "a delete failure is not reported as removed")
+    try expect(KeyStoreDecision.isFailure(deleteFailed), "a delete failure is reported")
+    try expect(KeyStoreDecision.invalidates(deleteFailed) == false, "a delete failure does not invalidate the cache")
+
+    let removed = KeyRemovalResult.removed(.changed)
+    try expect(removed.isRemoved, "a successful delete is removed")
+    try expect(removed.shouldClearCachedBalance, "a successful delete clears the cache")
+    try expect(KeyRemovalResult.removed(.unchanged).shouldClearCachedBalance == false, "deleting an absent key clears nothing")
 
     // MARK: Account generation — a changed account cannot repopulate the cache
 
