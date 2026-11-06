@@ -9,7 +9,7 @@ import Foundation
 
 enum WidgetPolicy {
 
-    /// Deep link that opens the app. Host and path are matched by the app's URL handler.
+    /// Deep link that opens the app. Host is matched by the app's URL handler.
     static let deepLink = "com.waqas.deepseekpulse://status"
     static let widgetDeepLinkScheme = "com.waqas.deepseekpulse"
     static let widgetDeepLinkHost = "status"
@@ -53,84 +53,125 @@ enum WidgetPolicy {
 
 /// Builds the timeline dates a widget actually needs.
 ///
-/// Foundation only, so the CI harness executes it with real Swift. The old code used one bounded
-/// delay plus a fixed 30-minute follow-up, which could step over real transitions. This planner
-/// walks the real pricing schedule and also inserts the moment the cached data turns stale.
-/// It only proposes dates; iOS decides when a timeline is actually reloaded.
+/// Foundation only, so the CI harness executes it with real Swift.
+///
+/// Correctness rules, each covered by Tests/WidgetKitTests.swift:
+///   * the cache-stale boundary is one second PAST the codec threshold, because the codec only
+///     reports .stale when age > staleAfter. Emitting the exact threshold would place an entry that
+///     still decodes as fresh, leaving a wrong badge on screen.
+///   * the plan is bounded by both a horizon and an entry cap.
+///   * every UTC midnight inside the horizon is included, because the day key and the 24-hour band
+///     change there.
+///   * the cap can never drop `now`, the stale crossing, or a transition within the horizon; those
+///     are collected before optional fill and are reserved slots.
+///   * the final entry never sits further away than the policy reload bound, so a widget always has
+///     a bounded reason to ask for a reload. iOS still decides the real refresh budget.
 enum WidgetTimelinePlanner {
 
-    /// Hard cap on entries so a widget can never build an unbounded timeline.
-    static let maximumEntries = 8
+    /// Hard cap on entries in one timeline.
+    static let maximumEntries = 12
+    /// Entries that are never dropped: `now`, at most one near transition and the stale crossing.
+    static let reservedEntries = 3
+    /// How far ahead the plan looks for real boundaries.
+    static let horizon: TimeInterval = 24 * 60 * 60
 
     /// One point in time the widget needs a fresh view for.
     struct Boundary: Equatable {
         var date: Date
-        /// Why this instant matters, used by tests and diagnostics.
         var reason: Reason
 
         enum Reason: String, Equatable {
             case now
             case peakSwitch
             case cacheStale
-            /// End of the current UTC day: the 24-hour band must restart at midnight.
+            /// End of a UTC day: the band and the day key restart at midnight.
             case utcMidnight
-            case safetyFloor
+            /// Bounded far entry so the timeline is never open-ended.
+            case reloadBound
         }
     }
 
-    /// Dates in ascending order, always starting with `now`, at most `maximumEntries`.
+    /// Ascending, de-duplicated, starting with `now`, at most `maximumEntries` long.
     /// - Parameters:
     ///   - now: current instant.
     ///   - schedule: the schedule copied into the shared snapshot.
-    ///   - dataWrittenAt: when the balance numbers were fetched, used to find the stale crossing.
-    ///   - staleAfter: age at which the widget must show the stale state.
+    ///   - dataFetchedAt: when the balance numbers were fetched (not when the file was written).
+    ///   - staleAfter: age threshold used by WidgetCacheCodec.
     static func boundaries(now: Date,
                            schedule: PricingSchedule,
-                           dataWrittenAt: Date?,
+                           dataFetchedAt: Date?,
                            staleAfter: TimeInterval = WidgetShared.staleAfter) -> [Boundary] {
-        var result: [Boundary] = [Boundary(date: now, reason: .now)]
+        let horizonEnd = now.addingTimeInterval(horizon)
 
-        // Real peak/off-peak transitions, including weekends and holidays, inside the horizon.
-        var cursor = now
-        var transitions = 0
-        while transitions < maximumEntries, let step = schedule.nextTransition(after: cursor) {
-            guard step.date > cursor else { break }
-            result.append(Boundary(date: step.date, reason: .peakSwitch))
-            cursor = step.date
-            transitions += 1
-            if result.count >= maximumEntries { break }
+        // 1. Always present: the current instant.
+        let nowBoundary = Boundary(date: now, reason: .now)
+
+        // 2. The first real transition inside the horizon (+ a little slack so a bound at the edge
+        //    is still captured). Reserved, so the cap cannot drop it.
+        var transitionBoundaries: [Boundary] = []
+        if let step = schedule.nextTransition(after: now),
+           step.date > now,
+           step.date <= horizonEnd {
+            transitionBoundaries.append(Boundary(date: step.date, reason: .peakSwitch))
         }
 
-        // The instant the cached balance becomes stale.
-        if let written = dataWrittenAt {
-            let staleAt = written.addingTimeInterval(staleAfter)
+        // 3. The stale crossing, one second past the threshold so the entry really decodes as stale.
+        //    Reserved for the same reason.
+        var staleBoundary: Boundary?
+        if let fetched = dataFetchedAt {
+            let staleAt = fetched.addingTimeInterval(staleAfter + 1)
             if staleAt > now {
-                result.append(Boundary(date: staleAt, reason: .cacheStale))
+                staleBoundary = Boundary(date: staleAt, reason: .cacheStale)
             }
         }
 
-        // Midnight UTC, because the band and the day key change there.
+        // 4. Every UTC midnight inside the horizon.
+        var midnightBoundaries: [Boundary] = []
         let startOfToday = PricingSchedule.startOfDayUTC(now)
-        if let midnight = PricingSchedule.utcCalendar.date(byAdding: .day, value: 1, to: startOfToday),
-           midnight > now {
-            result.append(Boundary(date: midnight, reason: .utcMidnight))
+        var dayOffset = 1
+        while let midnight = PricingSchedule.utcCalendar.date(byAdding: .day, value: dayOffset, to: startOfToday) {
+            guard midnight <= horizonEnd else { break }
+            if midnight > now {
+                midnightBoundaries.append(Boundary(date: midnight, reason: .utcMidnight))
+            }
+            dayOffset += 1
+            if dayOffset > 3 { break }
         }
 
-        // A bounded safety entry so a widget is not left undated if every other date is far away.
-        let safety = now.addingTimeInterval(WidgetPolicy.maximumRefreshInterval)
-        if result.count < 2 {
-            result.append(Boundary(date: safety, reason: .safetyFloor))
+        // 5. A bounded far entry so the timeline always terminates on a reload request.
+        let reloadBound = Boundary(date: min(horizonEnd, now.addingTimeInterval(WidgetPolicy.maximumRefreshInterval)),
+                                   reason: .reloadBound)
+
+        // Assemble: reserved first, then optional fill, then dedupe + sort.
+        var reserved: [Boundary] = [nowBoundary]
+        reserved.append(contentsOf: transitionBoundaries)
+        if let stale = staleBoundary { reserved.append(stale) }
+
+        var optional: [Boundary] = midnightBoundaries
+        optional.append(reloadBound)
+
+        var combined = reserved
+        for candidate in optional {
+            if combined.count >= maximumEntries { break }
+            combined.append(candidate)
         }
 
-        // Deduplicate equal instants (keeping the earliest reason), sort, then cap.
         var seen = Set<TimeInterval>()
         var unique: [Boundary] = []
-        for boundary in result.sorted(by: { $0.date < $1.date }) {
+        for boundary in combined.sorted(by: { $0.date < $1.date }) {
             let stamp = boundary.date.timeIntervalSince1970
             if seen.contains(stamp) { continue }
             seen.insert(stamp)
             unique.append(boundary)
             if unique.count >= maximumEntries { break }
+        }
+
+        // The cap must never remove `now`; it is sorted first because nothing precedes it.
+        if unique.first?.reason != .now {
+            unique.insert(nowBoundary, at: 0)
+            if unique.count > maximumEntries {
+                unique.removeLast()
+            }
         }
         return unique
     }
@@ -138,9 +179,11 @@ enum WidgetTimelinePlanner {
     /// Dates only, ready for Timeline(entries:policy:).
     static func dates(now: Date,
                       schedule: PricingSchedule,
-                      dataWrittenAt: Date?,
+                      dataFetchedAt: Date?,
                       staleAfter: TimeInterval = WidgetShared.staleAfter) -> [Date] {
-        boundaries(now: now, schedule: schedule, dataWrittenAt: dataWrittenAt, staleAfter: staleAfter)
-            .map { $0.date }
+        boundaries(now: now,
+                   schedule: schedule,
+                   dataFetchedAt: dataFetchedAt,
+                   staleAfter: staleAfter).map { $0.date }
     }
 }

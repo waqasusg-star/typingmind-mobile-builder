@@ -8,7 +8,7 @@
   "version": "1.0.3",
   "build_number": "4",
   "minimum_ios": "15.0",
-  "description": "Gate accessory widget families behind iOS 16 availability while keeping the app deployment target at iOS 15.",
+  "description": "Timeline planner: stale crossing strictly past the codec threshold, bounded horizon, every UTC midnight inside it, and caps that cannot drop now, the stale crossing or a near transition.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
