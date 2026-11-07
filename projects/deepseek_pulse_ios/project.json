@@ -8,7 +8,7 @@
   "version": "1.0.5",
   "build_number": "6",
   "minimum_ios": "15.0",
-  "description": "Visible Settings and Widgets buttons in the dashboard toolbar, plus an app icon with its own preview in Widget Studio.",
+  "description": "",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

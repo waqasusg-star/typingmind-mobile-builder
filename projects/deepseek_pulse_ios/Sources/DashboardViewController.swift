@@ -23,6 +23,7 @@ final class DashboardViewController: UIViewController {
     private let refreshControl = UIRefreshControl()
     private let pricingButton = UIButton(type: .system)
     private let client = DeepSeekClient()
+    private let actionsBar = ToolbarActionsView()
 
     private var timer: Timer?
     private var isLoading = false
@@ -95,6 +96,12 @@ final class DashboardViewController: UIViewController {
         messageCard.isHidden = true
         messageCard.content.addArrangedSubview(messageLabel)
         contentStack.addArrangedSubview(messageCard)
+
+        // Settings and Widgets as always-visible buttons: the previous bar-button menu could not be
+        // reached on a signed build, which left Settings impossible to open.
+        actionsBar.onSettings = { [weak self] in self?.settingsTapped() }
+        actionsBar.onWidgets = { [weak self] in self?.widgetStudioTapped() }
+        contentStack.addArrangedSubview(actionsBar)
 
         contentStack.addArrangedSubview(widgetCard)
 
