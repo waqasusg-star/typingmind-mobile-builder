@@ -81,10 +81,12 @@ final class DashboardViewController: UIViewController {
 
     /// 1.0.9: also repaints the themed backdrop, so switching theme changes the screen background
     /// and the artwork together with the card colours.
+    ///
+    /// It must NOT call AppThemeRefresh.refresh(): that reaches every window, which marks the root
+    /// view for display and re-enters this method.
     private func applyTheme() {
         view.backgroundColor = AppColors.background
         ThemedBackgroundInstaller.install(in: self)
-        AppThemeRefresh.refresh()
     }
 
     // MARK: - Layout
