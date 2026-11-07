@@ -5,10 +5,10 @@
   "app_name": "DeepSeek Pulse",
   "bundle_id": "com.waqas.deepseekpulse",
   "scheme": "DeepSeekPulse",
-  "version": "1.0.5",
-  "build_number": "6",
+  "version": "1.0.6",
+  "build_number": "7",
   "minimum_ios": "15.0",
-  "description": "",
+  "description": "DeepSeek Pulse 1.0.6: in-app app icon, available balance and refresh on the widget, 16 color themes, 10 widget designs",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
