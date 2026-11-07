@@ -11,25 +11,31 @@ import android.view.Gravity
 import android.view.View
 import android.widget.*
 
-val accent = Color.rgb(164,145,255)
+val accent = Hd.gold
 object AppColors {
-    val background = 0xff101016.toInt()
-    val surface = 0xff1d1d28.toInt()
-    val raised = 0xff272735.toInt()
-    val stroke = 0xff393948.toInt()
-    val muted = 0xffb6b5c8.toInt()
+    val background = Hd.background
+    val surface = Hd.surface
+    val raised = Hd.raised
+    val stroke = Hd.stroke
+    val muted = Hd.muted
     /** Opaque card surface used by the browser dock and list rows. */
-    val card = 0xff16161f.toInt()
+    val card = Hd.deep
     /** Translucent dock/pill surface above the website. */
-    val overlay = 0xf0161620.toInt()
+    val overlay = 0xf00b0d13.toInt()
     /** Destructive confirmation actions. */
     val danger = 0xffff627d.toInt()
     /** Saved (filled) favorite heart. */
     val heart = 0xffff304f.toInt()
+    /** Primary text on dark surfaces. */
+    val text = Hd.text
+    /** Premium highlight used by eyebrows, progress and active states. */
+    val gold = Hd.gold
+    /** Soft amber wash for selected chips. */
+    val goldSoft = Hd.goldSoft
 }
 fun Context.dp(n: Int) = (n * resources.displayMetrics.density).toInt()
 fun Context.label(value: String, size: Float = 16f) = TextView(this).apply {
-    text = value; textSize = size; setTextColor(0xfff6f5fa.toInt()); includeFontPadding = false
+    text = value; textSize = size; setTextColor(AppColors.text); includeFontPadding = false
 }
 fun Context.surface(color: Int = AppColors.surface, radius: Int = 16, interactive: Boolean = false): android.graphics.drawable.Drawable {
     val shape = GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat(); setStroke(dp(1),AppColors.stroke) }
