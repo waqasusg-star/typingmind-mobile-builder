@@ -23,6 +23,9 @@ def validate_profile(source, cfg):
         return
     if not (source/ENTRY).is_file() or (source/ENTRY).is_symlink():
         raise ValueError('widgetkit_v1 requires '+ENTRY)
+    for req in ['Sources/RequestPolicy.swift', 'Tests/WidgetKitTests.swift', 'Tests/WidgetKitTestMain.swift']:
+        if not (source/req).is_file() or (source/req).is_symlink():
+            raise ValueError('widgetkit_v1 requires '+req)
     actual = cfg.get('widget_extension')
     if actual is not None and actual != widget_identity(cfg):
         raise ValueError('Widget identity/App Group must match the containing app')
@@ -76,10 +79,10 @@ def policy_sources(work, configured):
 def widget_test_sources(work, cfg):
     if not enabled(cfg):
         return []
-    required = ['Tests/WidgetKitTests.swift','Tests/WidgetKitTestMain.swift']
+    required = ['Sources/RequestPolicy.swift','Tests/WidgetKitTests.swift','Tests/WidgetKitTestMain.swift']
     if any(not (work/p).is_file() for p in required):
-        raise ValueError('widgetkit_v1 requires the controlled WidgetKit test pair')
-    return [work/'Sources/RequestPolicy.swift', *sorted((work/'Shared').rglob('*.swift')), *[work/p for p in required]]
+        raise ValueError('widgetkit_v1 requires Sources/RequestPolicy.swift and the controlled WidgetKit test pair')
+    return [work/'Sources/RequestPolicy.swift', *sorted((work/'Shared').rglob('*.swift')), work/'Tests/WidgetKitTests.swift', work/'Tests/WidgetKitTestMain.swift']
 
 def initial_report(cfg):
     return {'widget_profile':cfg.get('widget_profile','none'),
@@ -157,7 +160,7 @@ def rebuild_notes(cfg):
     text = '# Rebuild the exact reviewed native project\n\nRequires macOS, Xcode and XcodeGen. From this folder:\n\n'
     text += '    xcodegen generate --spec native-project.json\n'
     text += '    xcodebuild -project '+cfg['scheme']+'.xcodeproj -scheme '+cfg['scheme']+' -configuration Release -sdk iphoneos -destination generic/platform=iOS CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO archive\n\n'
-    text += 'The generated native-project.json, Info.plist and entitlements are the actual controlled CI inputs. No private signing files are included.\n'
+    text += 'The generated native-project.json, Info.plist, GeneratedAssets.xcassets and entitlements are the actual controlled CI inputs. No private signing files are included.\n'
     if enabled(cfg):
         text += '\nA real WidgetKit target is embedded. See WIDGET-SIGNING.json for both bundle IDs and the App Group. This archive is UNSIGNED and MUST BE SIGNED BEFORE INSTALLATION. App Group access, the widget gallery and physical-device behavior have not been verified. Live Activities/Dynamic Island are not included.\n'
     return text

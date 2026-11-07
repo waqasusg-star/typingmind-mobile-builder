@@ -2,6 +2,7 @@
 import hashlib,json,os,re,subprocess
 from pathlib import Path
 import widgetkit_support as widgetkit
+import app_icons
 
 def verify(folder,env):
     pid=env['PROJECT_ID'];request=env['REQUEST_ID'];sha=env['SOURCE_SHA']
@@ -23,8 +24,9 @@ def verify(folder,env):
     if len(packages)!=2 or sum(f.suffix=='.ipa' for f in packages)!=1 or sum(f.name.endswith('-source.zip') for f in packages)!=1:raise ValueError('IPA and matching source ZIP required')
     if data.get('files')!=actual:raise ValueError('Native package hash or size mismatch')
     widgetkit.verify_release_widget(data,next(p for p in packages if p.suffix=='.ipa'))
+    app_icons.verify_release(data,next(p for p in packages if p.suffix=='.ipa'))
     sums=folder/'SHA256SUMS.txt';sums.write_text(''.join(f['sha256']+'  '+f['name']+'\n' for f in actual))
-    return [*packages,report,sums,*[folder/name for name in ['CHANGELOG.md','build.log','SIGN-BEFORE-INSTALL.txt','WIDGET-SIGNING.json'] if (folder/name).is_file()]]
+    return [*packages,report,sums,*[folder/name for name in ['CHANGELOG.md','README.md','build.log','SIGN-BEFORE-INSTALL.txt','WIDGET-SIGNING.json'] if (folder/name).is_file()]]
 
 def main():
     folder=Path('native-release');files=verify(folder,os.environ);repo=os.environ['GITHUB_REPOSITORY']
