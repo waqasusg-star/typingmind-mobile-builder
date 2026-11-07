@@ -7,6 +7,9 @@ import UIKit
 //   * Widget Studio shows the exact mark this build carries
 //   * HomeScreenShortcut installs it as a real Home Screen tile
 //   * the app badge in Settings uses the same drawing
+//
+// 1.0.7 draws a soft radial glow behind the centred mark and states the centring result, so the
+// artwork can be judged instead of guessed.
 
 enum AppIcon {
 
@@ -41,7 +44,24 @@ enum AppIcon {
                                       options: [])
             }
 
-            // Inactive band.
+            // Soft glow behind the mark, so the tile has depth at 60 pt as well as at 1024 pt.
+            let glowCentre = CGPoint(x: side / 2, y: side * 0.47)
+            let glowColours = [ui(AppIconArtwork.glow).withAlphaComponent(0.55).cgColor,
+                               ui(AppIconArtwork.glow).withAlphaComponent(0).cgColor] as CFArray
+            if let glowGradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                                             colors: glowColours,
+                                             locations: [0, 1]) {
+                cg.saveGState()
+                cg.drawRadialGradient(glowGradient,
+                                      startCenter: glowCentre,
+                                      startRadius: 0,
+                                      endCenter: glowCentre,
+                                      endRadius: side * CGFloat(AppIconArtwork.glowRadius),
+                                      options: [])
+                cg.restoreGState()
+            }
+
+            // Band track, then the active (off-peak) part of the band.
             let bandRect = CGRect(x: side * CGFloat(AppIconArtwork.bandOrigin.x),
                                   y: side * CGFloat(AppIconArtwork.bandOrigin.y),
                                   width: side * CGFloat(AppIconArtwork.bandSize.x),
@@ -50,7 +70,6 @@ enum AppIcon {
             UIBezierPath(roundedRect: bandRect,
                          cornerRadius: bandRect.height / 2).fill()
 
-            // Active (off-peak) part of the band.
             let activeRect = CGRect(x: bandRect.minX,
                                     y: bandRect.minY,
                                     width: bandRect.width * CGFloat(AppIconArtwork.bandActiveFraction),
@@ -59,7 +78,7 @@ enum AppIcon {
             UIBezierPath(roundedRect: activeRect,
                          cornerRadius: bandRect.height / 2).fill()
 
-            // Pulse line.
+            // Pulse line, drawn last so it crosses the band cleanly.
             let line = UIBezierPath()
             line.lineWidth = side * CGFloat(AppIconArtwork.pulseWidth)
             line.lineJoinStyle = .round
@@ -87,21 +106,28 @@ enum AppIcon {
     }
 
     /// One sentence for Widget Studio, so a blank tile is never explained by guesswork.
+    ///
+    /// This build states the truth about the delivered bundle: the CI-generated Info.plist has no
+    /// icon keys, so iOS draws its generic grid placeholder on the Home Screen. The drawing above is
+    /// the same artwork shipped in Resources/AppIcon.svg for an Xcode rebuild that adds an
+    /// Assets.xcassets AppIcon set.
     static var statusLine: String {
         if hasBundledIcon {
             return "This build carries a compiled app icon, so the Home Screen shows this mark."
         }
-        if HomeScreenShortcut.canInstall {
-            return "This build has no compiled icon asset, so Home Screen Shortcut adds the mark above as a real tile you can keep."
-        }
-        return "This build has no compiled icon asset. The mark above is what the app draws; Home Screen Shortcut is unavailable on this device."
+        return "The CI build has no compiled icon asset, so iOS shows its generic placeholder on the Home Screen. This is the exact artwork shipped in Resources/AppIcon.svg; adding it as an Assets.xcassets AppIcon set in Xcode replaces the placeholder."
+    }
+
+    /// Short status for the icon card title row.
+    static var shortStatus: String {
+        hasBundledIcon ? "Compiled icon present" : "Drawn mark - no compiled asset"
     }
 }
 
 extension Bundle {
 
-    /// iOS stores the primary icon name in Info.plist, but the controlled pipeline generates that file
-    /// without an icon entry, so this usually returns nil and the drawn mark is used.
+    /// iOS stores the primary icon name in Info.plist. The controlled pipeline generates that file
+    /// without an icon entry, so this returns nil there and the drawn mark is used.
     var iconFileName: String? {
         let keys = ["CFBundleIconName", "CFBundlePrimaryIcon", "CFBundleIcons"]
         for key in keys {

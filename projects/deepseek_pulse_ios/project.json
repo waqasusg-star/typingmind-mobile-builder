@@ -8,7 +8,7 @@
   "version": "1.0.7",
   "build_number": "8",
   "minimum_ios": "15.0",
-  "description": "1.0.7 (build 8): centred app icon artwork, Widget Studio theme and design pickers, honest API key state on every widget, redesigned Lock Screen widgets.",
+  "description": "1.0.7 (build 8): icon renderer with centred mark and glow; widget entry exposes honest key/balance state.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

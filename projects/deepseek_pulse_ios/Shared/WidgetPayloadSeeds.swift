@@ -4,9 +4,13 @@ import Foundation
 //
 // Foundation only, compiled into BOTH targets. It contains no secret and no account data:
 // the extension has no way to reach the Keychain or the network, so this payload never carries a
-// balance, a key flag or a fetch timestamp. It carries exactly what the widget can compute alone:
+// balance, a key value or a fetch timestamp. It carries exactly what the widget can compute alone:
 // the verified pricing schedule, the published rate labels and the last appearance it was given.
-
+//
+// 1.0.7 changes the key flag. It used to be hard-coded `false`, so a seed the extension wrote before
+// the app had ever saved a snapshot told the widget "No API key saved" forever, even though the app
+// held a key in the Keychain. The seed now carries whatever the extension last knew: nil means
+// unknown, and the shared wording layer refuses to claim a key is missing on unknown state.
 extension WidgetSnapshotPayload {
 
     /// The schedule-only snapshot the extension can build with no help from the app.
@@ -15,8 +19,11 @@ extension WidgetSnapshotPayload {
     ///   - now: the write stamp, so the timeline can label the age honestly.
     ///   - appearance: the appearance already stored in the extension's own tier, if any. Passing it
     ///     keeps the user's chosen theme and design even before the app has written a snapshot.
+    ///   - hasAPIKey: the key state the extension last saw. Nil (the default) means "unknown", which
+    ///     is rendered as "Add key" only after the app has actually reported no key.
     static func builtIn(now: Date = Date(),
-                        appearance: WidgetAppearance? = nil) -> WidgetSnapshotPayload {
+                        appearance: WidgetAppearance? = nil,
+                        hasAPIKey: Bool? = nil) -> WidgetSnapshotPayload {
         let rates = RateSeeds.models.map { model in
             WidgetRate(name: WidgetCacheCodec.safe(model.name),
                        label: WidgetCacheCodec.safe(model.label),
@@ -27,7 +34,8 @@ extension WidgetSnapshotPayload {
                                           balance: nil,
                                           schedule: RateSeeds.schedule,
                                           models: rates,
-                                          hasAPIKey: false,
+                                          hasAPIKey: hasAPIKey ?? false,
+                                          hasAPIKeyKnown: hasAPIKey != nil,
                                           appearance: appearance ?? WidgetAppearance.defaultAppearance)
     }
 }

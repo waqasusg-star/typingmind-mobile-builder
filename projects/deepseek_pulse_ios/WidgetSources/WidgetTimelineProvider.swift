@@ -15,8 +15,11 @@ import WidgetKit
 //     embedded copy from the schedule constants even before the app has ever written a snapshot.
 //     That copy carries no balance and says so; it is not invented account data.
 //
-// 1.0.6 adds the appearance (theme + design) and the available balance to every entry, so the ten
-// designs can be drawn entirely from a PulseEntry.
+// 1.0.7 fixes the "No key" / "No API key saved" wording. The extension keeps its own copy of the
+// snapshot, and its built-in seed wrote `hasAPIKey: false`. That copy could then stay the newest
+// readable one, so the widget announced a missing key even though the app had the key in the
+// Keychain. The seed now reports the key state as UNKNOWN instead of false, and every view routes its
+// wording through PulseBalanceWording, which never claims a key is missing on unknown state.
 
 // MARK: - Extension-side writer
 
@@ -47,10 +50,13 @@ enum PulseWidgetLocalStore {
         }
 
         // No usable payload anywhere: publish the built-in schedule snapshot so the widget can
-        // count down and show PEAK / OFF-PEAK immediately. No balance is fabricated. The appearance
-        // already stored in this tier is carried over, so a chosen theme is not lost.
-        let existingAppearance = loaded.envelope.payload?.appearance
-        let seeded = WidgetSnapshotPayload.builtIn(now: date, appearance: existingAppearance)
+        // count down and show PEAK / OFF-PEAK immediately. No balance is fabricated, and the key
+        // state stays unknown. The appearance already stored in this tier is carried over, so a
+        // chosen theme and design are not lost.
+        let existing = loaded.envelope.payload
+        let seeded = WidgetSnapshotPayload.builtIn(now: date,
+                                                  appearance: existing?.appearance,
+                                                  hasAPIKey: existing?.hasAPIKey)
         WidgetSnapshotStore.write(payload: seeded, to: .extensionLocal, location: location)
         return WidgetSnapshotStore.Loaded(envelope: WidgetCacheCodec.envelope(for: seeded, now: date),
                                           tier: .extensionLocal)
@@ -98,13 +104,42 @@ struct PulseEntry: TimelineEntry {
         return WidgetPlanner.countdownCaption(snapshot: snapshot, discountsEnabled: schedule.discountsEnabled)
     }
 
-    // MARK: Balance and statistics (added in 1.0.6)
+    // MARK: Balance and statistics
 
-    /// The available balance, exactly as the app formatted it. Never invents a number.
-    var balanceText: String { envelope.balanceLine() }
+    /// Whether a displayable balance exists in the snapshot.
+    var hasBalance: Bool { envelope.hasUsableBalance }
 
-    /// How fresh the balance is, or why it is not available.
-    var balanceCaption: String { envelope.balanceCaption(now: date) }
+    /// Whether the app reported that a key is stored. Nil in the payload means unknown.
+    var hasAPIKey: Bool { envelope.hasAPIKey }
+
+    /// The available balance, exactly as the app formatted it. When there is no balance this is an
+    /// instruction rather than a bare "No key".
+    var balanceText: String {
+        let slot = PulseBalanceWording.slot(hasBalance: hasBalance, hasAPIKey: hasAPIKey)
+        return slot.isEmpty ? envelope.balanceLine() : slot
+    }
+
+    /// How fresh the balance is, or the next action when there is none.
+    var balanceCaption: String {
+        guard envelope.state.isUsable else {
+            return PulseBalanceWording.unavailableCaption(state: envelope.state)
+        }
+        return PulseBalanceWording.caption(hasBalance: hasBalance,
+                                           hasAPIKey: hasAPIKey,
+                                           fetchedAtAge: envelope.payload?.balanceFetchedAt.map {
+                                               max(0, date.timeIntervalSince($0))
+                                           },
+                                           isStale: envelope.state == .stale)
+    }
+
+    /// Short caption for the compact designs.
+    var shortBalanceCaption: String {
+        guard envelope.state.isUsable else { return envelope.state.shortLabel }
+        if hasBalance, let fetched = envelope.payload?.balanceFetchedAt {
+            return ClockFormat.relative(fetched, now: date)
+        }
+        return hasAPIKey ? "Not loaded" : "Add key"
+    }
 
     var grantedText: String {
         envelope.payload?.balance?.grantedText.isEmpty == false
@@ -135,6 +170,19 @@ struct PulseEntry: TimelineEntry {
     var switchClockText: String {
         guard let target = nextSwitchAt else { return "--:--" }
         return ClockFormat.localTimeLabel(target)
+    }
+
+    /// Peak progress for the ring and the new Lock Screen gauge: 0 at the start of peak, 1 at the end.
+    var peakProgress: Double {
+        guard let snapshot = snapshot, snapshot.totalPeakMinutesToday > 0 else { return 0 }
+        let elapsed = snapshot.totalPeakMinutesToday - snapshot.peakMinutesLeftToday
+        return min(1, max(0, Double(elapsed) / Double(snapshot.totalPeakMinutesToday)))
+    }
+
+    /// What the next switch does, in two words, for the Lock Screen cells.
+    var switchWord: String {
+        guard let snapshot = snapshot, snapshot.nextSwitchAt != nil else { return "STATE" }
+        return snapshot.nextSwitchBecomesPeak ? "Peak at" : "Off-peak at"
     }
 
     var footnote: String {

@@ -7,6 +7,11 @@ import Foundation
 //
 // It declares no type that already exists in Sources/RequestPolicy.swift or in the other Shared
 // Core files. The API key never reaches this file: only display-safe values are encoded.
+//
+// 1.0.7 adds `hasAPIKeyKnown`. Previously a boolean could not distinguish "the app says there is no
+// key" from "this snapshot was written before the app knew", and the browser-unreadable seed plus
+// the extension's own copy produced a permanent "No key" / "No API key saved" even on an account
+// with a stored key. The flag is decoded tolerantly, so a payload written by 1.0.6 still reads.
 
 /// App Group shared by the app and the widget extension.
 enum WidgetShared {
@@ -17,7 +22,7 @@ enum WidgetShared {
     /// The extension's own copy, used when the App Group container is unavailable.
     static let localCacheFileName = "pulse-widget-local.json"
     /// Current on-disk payload version. Bumping this makes older payloads unreadable by design.
-    static let schemaVersion = 3
+    static let schemaVersion = 4
     /// Dates older than this are labelled as stale instead of being presented as current.
     static let staleAfter: TimeInterval = 60 * 60
     /// Extension bundle identifier, used for diagnostics and the setup state.
@@ -44,7 +49,7 @@ enum WidgetDataState: String, Codable, Equatable {
         case .fresh:
             return "Balance from the DeepSeek Pulse app."
         case .stale:
-            return "Showing the last balance the app saved. Tap the refresh icon to update."
+            return "Showing the last balance the app saved. Open the app to update."
         case .groupUnavailable:
             return "No saved snapshot yet. Open DeepSeek Pulse once; the widget saves its own copy from then on."
         case .empty:
@@ -88,8 +93,8 @@ struct WidgetRate: Codable, Equatable {
 /// The complete, self-contained payload the extension needs to draw itself offline.
 ///
 /// The schedule is embedded rather than shared by reference so the extension can compute state,
-/// countdown and timeline boundaries with no app running and no network. `appearance` is optional
-/// so a payload written by an older build still decodes.
+/// countdown and timeline boundaries with no app running and no network. `appearance` and
+/// `hasAPIKeyKnown` are optional so a payload written by an older build still decodes.
 struct WidgetSnapshotPayload: Codable, Equatable {
     var schemaVersion: Int
     /// When the app wrote this payload.
@@ -100,6 +105,9 @@ struct WidgetSnapshotPayload: Codable, Equatable {
     var schedule: PricingSchedule
     var models: [WidgetRate]
     var hasAPIKey: Bool
+    /// False or absent means the writer did not know the key state, so views must not claim the key
+    /// is missing. True means the app positively reported no usable key.
+    var hasAPIKeyKnown: Bool?
     /// Theme, widget design and display switches chosen in Widget Studio.
     var appearance: WidgetAppearance?
 
@@ -112,6 +120,7 @@ struct WidgetSnapshotPayload: Codable, Equatable {
                      schedule: PricingSchedule,
                      models: [WidgetRate],
                      hasAPIKey: Bool,
+                     hasAPIKeyKnown: Bool = true,
                      appearance: WidgetAppearance? = nil) -> WidgetSnapshotPayload {
         WidgetSnapshotPayload(schemaVersion: schemaVersion,
                               writtenAt: writtenAt,
@@ -120,6 +129,7 @@ struct WidgetSnapshotPayload: Codable, Equatable {
                               schedule: schedule,
                               models: models,
                               hasAPIKey: hasAPIKey,
+                              hasAPIKeyKnown: hasAPIKeyKnown,
                               appearance: appearance)
     }
 }
@@ -137,7 +147,13 @@ struct WidgetSnapshotEnvelope: Equatable {
 
     var schedule: PricingSchedule? { payload?.schedule }
     var balance: WidgetBalance? { payload?.balance }
+
+    /// True only when the writer positively reported a stored key. Unknown reads as false here, and
+    /// views must combine it with the balance wording rather than printing it raw.
     var hasAPIKey: Bool { payload?.hasAPIKey ?? false }
+
+    /// True when the writer actually knew the key state.
+    var hasAPIKeyKnown: Bool { payload?.hasAPIKeyKnown ?? false }
 
     /// The saved appearance, or the default one. Never nil, so views always have a theme.
     var appearance: WidgetAppearance {
@@ -147,6 +163,7 @@ struct WidgetSnapshotEnvelope: Equatable {
     /// True when a real, available balance is known and should be shown.
     var hasUsableBalance: Bool {
         guard let balance = payload?.balance else { return false }
+        if balance.totalText.isEmpty { return false }
         return balance.isAvailable || !balance.totalText.isEmpty
     }
 
@@ -154,9 +171,6 @@ struct WidgetSnapshotEnvelope: Equatable {
     func balanceLine() -> String {
         if let balance = payload?.balance, !balance.totalText.isEmpty {
             return balance.totalText
-        }
-        if state == .fresh || state == .stale {
-            return hasAPIKey ? "--" : "No key"
         }
         return "--"
     }
@@ -174,11 +188,13 @@ struct WidgetSnapshotEnvelope: Equatable {
             return state.explainer
         }
         guard let fetched = payload?.balanceFetchedAt else {
-            return hasAPIKey ? "Balance not loaded yet" : "No API key saved"
+            return hasAPIKey
+                ? "Key saved - open the app to load the balance"
+                : "Saved schedule only - no account data yet"
         }
         let relative = ClockFormat.relative(fetched, now: now)
         if state == .stale {
-            return "Last saved " + relative + " - tap to refresh"
+            return "Last saved " + relative + " - open the app to update"
         }
         return "Updated " + relative
     }
@@ -186,7 +202,7 @@ struct WidgetSnapshotEnvelope: Equatable {
     /// Short caption used by the compact designs.
     func shortBalanceCaption(now: Date) -> String {
         guard let fetched = payload?.balanceFetchedAt else {
-            return hasAPIKey ? "Not loaded" : "No key"
+            return hasAPIKey ? "Not loaded" : "Schedule only"
         }
         return ClockFormat.relative(fetched, now: now)
     }
