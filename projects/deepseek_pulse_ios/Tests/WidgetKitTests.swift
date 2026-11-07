@@ -395,5 +395,41 @@ func widgetKitChecks() throws {
     try expect(WidgetShared.extensionBundleIdentifier == "com.waqas.deepseekpulse.widgets", "extension bundle identifier")
     try expect(WidgetShared.cacheFileName == "widget-snapshot.json", "cache file name")
 
+    // MARK: Themes and designs — every palette reachable, every design assigned to a family
+
+    try expect(PulseThemes.all.count >= 10, "at least ten themes are shipped (found " + String(PulseThemes.all.count) + ")")
+    try expect(PulseThemes.count == PulseThemes.all.count, "the advertised theme count matches the catalogue")
+    try expect(Set(PulseThemes.all.map { $0.id }).count == PulseThemes.all.count, "theme ids are unique")
+    try expect(PulseThemes.isConsistent, "the catalogue is internally consistent")
+    for theme in PulseThemes.all {
+        try expect(theme.isDisplayable, "every channel of " + theme.id + " is displayable")
+        try expect(PulseThemes.contains(id: theme.id), "theme " + theme.id + " resolves by id from the picker")
+        try expect(PulseThemes.theme(id: theme.id).name == theme.name, "theme " + theme.id + " keeps its own name, no fallback")
+        for state in [PricingState.peak, PricingState.offPeak, PricingState.standard] {
+            try expect(theme.ramp(for: state).isDisplayable, "the " + theme.id + " ramp is displayable in every state")
+        }
+    }
+    try expect(PulseThemes.theme(id: "no-such-theme").id == PulseThemes.fallbackID, "an unknown id falls back instead of blanking")
+    try expect(WidgetDesign.ordered.count == 10, "ten widget designs are shipped")
+    try expect(WidgetDesign.smallFamily.count == 5 && WidgetDesign.mediumFamily.count == 5, "five designs per widget size")
+    try expect(Set(WidgetDesign.ordered.map { $0.code }).count == 10, "design codes are unique")
+    for design in WidgetDesign.ordered {
+        try expect(WidgetDesign.design(code: design.code) == design, "design " + design.code + " resolves from its code")
+    }
+
+    // A saved appearance keeps the theme and both designs across a payload round trip.
+    let themedAppearance = WidgetAppearance(themeID: "lavender", smallDesign: .ring, mediumDesign: .ledger,
+                                            artwork: "rings", showBalance: false, showRefresh: true, showDayBand: false)
+    let themedPayload = WidgetSnapshotPayload.make(writtenAt: now, balanceFetchedAt: nil, balance: nil,
+                                                   schedule: schedule, models: [], hasAPIKey: true,
+                                                   appearance: themedAppearance)
+    let themedEnvelope = WidgetCacheCodec.decode(try WidgetCacheCodec.encode(themedPayload), now: now)
+    try expect(themedEnvelope.appearance.themeID == "lavender", "the chosen theme survives encode/decode")
+    try expect(themedEnvelope.appearance.theme.name == "Lavender", "the chosen theme resolves to its own palette")
+    try expect(themedEnvelope.appearance.smallDesign == .ring, "the small design survives encode/decode")
+    try expect(themedEnvelope.appearance.mediumDesign == .ledger, "the medium design survives encode/decode")
+    try expect(!themedEnvelope.appearance.showBalance, "the balance switch survives encode/decode")
+
+
     print("widget kit checks passed: " + String(checked))
 }
