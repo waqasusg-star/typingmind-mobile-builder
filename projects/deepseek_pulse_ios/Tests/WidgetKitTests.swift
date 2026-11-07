@@ -87,11 +87,12 @@ func widgetKitChecks() throws {
     // A body that states the CURRENT version but carries nothing else must be corrupt, not
     // fabricated. The literal is built from the real constant: hard-coding a stale number here turned
     // this into a version-mismatch probe, which the codec correctly reports as .incompatible.
-    let versionOnly = Data("{\"schemaVersion\":" + String(WidgetShared.schemaVersion) + "}".utf8)
+    let versionOnly = Data(("{\"schemaVersion\":" + String(WidgetShared.schemaVersion) + "}").utf8)
     try expect(WidgetCacheCodec.decode(versionOnly, now: now).state == .corrupt, "a version-only body is corrupt, not fabricated")
     try expect(WidgetCacheCodec.decode(versionOnly, now: now).payload == nil, "a corrupt body yields no payload")
     // And the separate rule it accidentally exercised: any other version is incompatible, not corrupt.
-    try expect(WidgetCacheCodec.decode(Data("{\"schemaVersion\":" + String(WidgetShared.schemaVersion - 2) + "}".utf8), now: now).state == .incompatible, "a version-only body for another schema is incompatible")
+    let otherVersion = Data(("{\"schemaVersion\":" + String(WidgetShared.schemaVersion - 2) + "}").utf8)
+    try expect(WidgetCacheCodec.decode(otherVersion, now: now).state == .incompatible, "a version-only body for another schema is incompatible")
     try expect(WidgetCacheCodec.decode(Data("{".utf8), now: now).balanceLine() == "--", "corrupt data shows no fake balance")
 
     // MARK: Staleness threshold, measured from balanceFetchedAt
