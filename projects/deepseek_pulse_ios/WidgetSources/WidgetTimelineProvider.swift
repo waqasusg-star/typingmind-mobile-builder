@@ -54,9 +54,13 @@ enum PulseWidgetLocalStore {
         // state stays unknown. The appearance already stored in this tier is carried over, so a
         // chosen theme and design are not lost.
         let existing = loaded.envelope.payload
+        // 1.0.8: the key KNOWN flag is carried over too. Without it, a snapshot that positively
+        // reported "no key" degraded to "unknown" every time the seed was rewritten, and the owner of
+        // a keyless account never saw the actionable "Add API key" wording.
         let seeded = WidgetSnapshotPayload.builtIn(now: date,
                                                   appearance: existing?.appearance,
-                                                  hasAPIKey: existing?.hasAPIKey)
+                                                  hasAPIKey: existing?.hasAPIKey,
+                                                  hasAPIKeyKnown: existing?.hasAPIKeyKnown)
         WidgetSnapshotStore.write(payload: seeded, to: .extensionLocal, location: location)
         return WidgetSnapshotStore.Loaded(envelope: WidgetCacheCodec.envelope(for: seeded, now: date),
                                           tier: .extensionLocal)

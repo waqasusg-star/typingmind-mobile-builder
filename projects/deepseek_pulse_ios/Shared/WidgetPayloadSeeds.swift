@@ -23,7 +23,8 @@ extension WidgetSnapshotPayload {
     ///     is rendered as "Add key" only after the app has actually reported no key.
     static func builtIn(now: Date = Date(),
                         appearance: WidgetAppearance? = nil,
-                        hasAPIKey: Bool? = nil) -> WidgetSnapshotPayload {
+                        hasAPIKey: Bool? = nil,
+                        hasAPIKeyKnown: Bool? = nil) -> WidgetSnapshotPayload {
         let rates = RateSeeds.models.map { model in
             WidgetRate(name: WidgetCacheCodec.safe(model.name),
                        label: WidgetCacheCodec.safe(model.label),
@@ -35,7 +36,7 @@ extension WidgetSnapshotPayload {
                                           schedule: RateSeeds.schedule,
                                           models: rates,
                                           hasAPIKey: hasAPIKey ?? false,
-                                          hasAPIKeyKnown: hasAPIKey != nil,
+                                          hasAPIKeyKnown: hasAPIKeyKnown ?? (hasAPIKey != nil),
                                           appearance: appearance ?? WidgetAppearance.defaultAppearance)
     }
 }
