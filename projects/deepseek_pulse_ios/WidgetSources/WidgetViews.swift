@@ -126,51 +126,9 @@ struct WidgetEntryView: View {
 // WidgetLockScreenDialViews.swift, and keeping both copies would duplicate the type names in one
 // target. Nothing else referenced the old views.
 
-/// The wide card below the clock.
-@available(iOSApplicationExtension 16.0, *)
-struct PulseRectangularView: View {
-    var entry: PulseEntry
+// MARK: - Old rectangular accessory view removed in 1.0.9
+//
+// PulseRectangularView and the PulseGaugeTint enum were defined here. The redesigned accessory views
+// now live in WidgetLockScreenViews.swift and WidgetLockScreenDialViews.swift; keeping the old copy
+// would duplicate those type names inside the extension target.
 
-    var body: some View {
-        HStack(alignment: .center, spacing: 9) {
-            // Left: the pricing state and what the countdown is counting to.
-            VStack(alignment: .leading, spacing: 1) {
-                Text(entry.headline)
-                    .font(.system(size: 11, weight: .heavy, design: .rounded))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                Text(entry.countdownLabel.uppercased())
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            // Right: the live countdown, then when the switch lands in local time.
-            VStack(alignment: .trailing, spacing: 0) {
-                PulseCountdown(entry: entry, size: 19, weight: .bold, ink: .primary)
-                Text(entry.switchClockText)
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .privacySensitiveIfAvailable()
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(entry.headline + ". " + entry.countdownLabel + " " + entry.countdownText)
-    }
-}
-
-/// Tint for the circular gauge: peak and off-peak read differently at a glance, but both stay inside
-/// the system material.
-@available(iOSApplicationExtension 16.0, *)
-enum PulseGaugeTint {
-    static func tint(entry: PulseEntry) -> Color {
-        guard let schedule = entry.envelope.schedule else { return .gray }
-        switch schedule.state(at: entry.date) {
-        case .peak: return .orange
-        case .offPeak: return .green
-        case .standard: return .gray
-        }
-    }
-}
