@@ -1,70 +1,74 @@
 import UIKit
 
-// DeepSeek Pulse — the Settings / Widgets toolbar.
+// DeepSeek Pulse — the always-visible navigation row on the dashboard.
 //
-// The previous dashboard put Settings inside a bar-button item's menu. When that menu is not
-// presented the Settings screen is unreachable, which is what happened on the signed 1.0.4 build.
-// These views are plain UIButtons in a fixed-height stack, so they are always visible, always
-// tappable and always have a text label next to the symbol.
+// 1.0.5 introduced this row because a bar-button UIMenu was not reachable on a signed build. 1.0.7
+// adds the Themes button, because the sixteen palettes shipped in 1.0.6 were unreachable: nothing in
+// the UI ever opened a picker.
 
 final class ToolbarActionsView: UIView {
 
-    private let settingsButton = UIButton(type: .system)
-    private let widgetsButton = UIButton(type: .system)
-
     var onSettings: (() -> Void)?
     var onWidgets: (() -> Void)?
+    var onThemes: (() -> Void)?
+
+    private let settingsButton = ToolbarActionsView.makeButton(title: "Settings", symbol: "gearshape")
+    private let themesButton = ToolbarActionsView.makeButton(title: "Themes", symbol: "paintpalette")
+    private let widgetsButton = ToolbarActionsView.makeButton(title: "Widgets", symbol: "square.grid.2x2")
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        build()
+        setUp()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    /// Fixed intrinsic height so the stack view cannot collapse the row to zero.
-    override var intrinsicContentSize: CGSize {
-        CGSize(width: UIView.noIntrinsicMetric, height: 44)
-    }
-
-    private func build() {
-        settingsButton.setTitle("Settings", for: .normal)
-        settingsButton.setImage(UIImage(systemName: "gearshape.fill"), for: .normal)
-        widgetsButton.setTitle("Widgets", for: .normal)
-        widgetsButton.setImage(UIImage(systemName: "square.grid.2x2.fill"), for: .normal)
-
-        for button in [settingsButton, widgetsButton] {
-            button.tintColor = AppColors.accentSoft
-            button.setTitleColor(AppColors.accentSoft, for: .normal)
-            button.titleLabel?.font = Typography.scaled(13, UIFont.Weight.semibold, style: .footnote)
-            button.backgroundColor = AppColors.surfaceElevated
-            button.layer.cornerRadius = 12
-            button.layer.cornerCurve = .continuous
-            button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 14)
-            button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4, bottom: 0, right: 4)
-            button.heightAnchor.constraint(equalToConstant: 40).isActive = true
-        }
-
-        settingsButton.accessibilityLabel = "Open settings"
-        widgetsButton.accessibilityLabel = "Open widget gallery help"
-        settingsButton.addTarget(self, action: #selector(settingsTapped), for: .touchUpInside)
-        widgetsButton.addTarget(self, action: #selector(widgetsTapped), for: .touchUpInside)
-
-        let stack = UIStackView(arrangedSubviews: [settingsButton, widgetsButton])
-        stack.axis = .horizontal
-        stack.spacing = 10
-        stack.distribution = .fillEqually
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
+    private func setUp() {
+        let row = UIStackView(arrangedSubviews: [settingsButton, themesButton, widgetsButton])
+        row.axis = .horizontal
+        row.spacing = 10
+        row.distribution = .fillEqually
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
 
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor)
+            row.topAnchor.constraint(equalTo: topAnchor),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor),
+            heightAnchor.constraint(equalToConstant: 44)
         ])
+
+        settingsButton.addTarget(self, action: #selector(settingsTapped), for: .touchUpInside)
+        themesButton.addTarget(self, action: #selector(themesTapped), for: .touchUpInside)
+        widgetsButton.addTarget(self, action: #selector(widgetsTapped), for: .touchUpInside)
+
+        refreshColours()
+    }
+
+    /// Repaints the row from the current theme. Called when a theme is applied.
+    func refreshColours() {
+        for button in [settingsButton, themesButton, widgetsButton] {
+            button.backgroundColor = AppColors.surfaceElevated
+            button.setTitleColor(AppColors.text, for: .normal)
+            button.tintColor = AppColors.accentSoft
+        }
+    }
+
+    private static func makeButton(title: String, symbol: String) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setTitle(title, for: .normal)
+        button.setImage(UIImage(systemName: symbol), for: .normal)
+        button.titleLabel?.font = Typography.scaled(13, .semibold, style: .subheadline)
+        button.layer.cornerRadius = 12
+        button.layer.cornerCurve = .continuous
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 6)
+        button.titleEdgeInsets = UIEdgeInsets(top: 0, left: 6, bottom: 0, right: 0)
+        button.accessibilityLabel = title
+        return button
     }
 
     @objc private func settingsTapped() { onSettings?() }
+    @objc private func themesTapped() { onThemes?() }
     @objc private func widgetsTapped() { onWidgets?() }
 }

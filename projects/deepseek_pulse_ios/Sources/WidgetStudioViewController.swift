@@ -4,6 +4,9 @@ import UIKit
 ///
 /// Renders the widget-sized layouts with the live saved schedule, writes the shared widget
 /// snapshot, and states exactly how to add the real Home Screen / Lock Screen widget.
+///
+/// 1.0.7 adds the theme entry point to this screen and makes the previews show the same theme and
+/// design the widget will use, so the studio can no longer disagree with the Home Screen.
 final class WidgetStudioViewController: UIViewController {
 
     private let scrollView = UIScrollView()
@@ -14,8 +17,10 @@ final class WidgetStudioViewController: UIViewController {
     private let liveCard = LiveActivityCardView(frame: .zero)
     private let statusLabel = Labels.caption("")
     private let bridgeLabel = Labels.caption("")
+    private let themeSummaryLabel = Labels.caption("")
 
     var onRequestRefresh: (() -> Void)?
+    var onRequestThemes: (() -> Void)?
 
     private var timer: Timer?
 
@@ -24,11 +29,20 @@ final class WidgetStudioViewController: UIViewController {
         title = "Widgets"
         view.backgroundColor = AppColors.background
         navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Close", style: .plain, target: self, action: #selector(closeTapped))
-        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Done", style: .done, target: self, action: #selector(closeTapped))
+        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Themes", style: .plain, target: self, action: #selector(themesTapped))
         buildLayout()
         render()
         writeSnapshot()
         startClock()
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(appearanceChanged),
+                                               name: .deepSeekAppearanceChanged,
+                                               object: nil)
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        render()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -62,6 +76,18 @@ final class WidgetStudioViewController: UIViewController {
         intro.content.addArrangedSubview(Labels.caption("This build contains the DeepSeekPulseWidgets extension. The cards below are in-app previews drawn from the same WidgetPlanner state as the real widget, so what you see here is what the Home Screen widget computes."))
         stack.addArrangedSubview(intro)
 
+        let themeCard = CardView()
+        themeCard.content.addArrangedSubview(Labels.title("Theme and design"))
+        themeCard.content.addArrangedSubview(themeSummaryLabel)
+        let themeButton = UIButton(type: .system)
+        themeButton.setTitle("Choose theme and widget design", for: .normal)
+        themeButton.titleLabel?.font = Typography.scaled(14, .semibold, style: .subheadline)
+        themeButton.setTitleColor(AppColors.accentSoft, for: .normal)
+        themeButton.contentHorizontalAlignment = .leading
+        themeButton.addTarget(self, action: #selector(themesTapped), for: .touchUpInside)
+        themeCard.content.addArrangedSubview(themeButton)
+        stack.addArrangedSubview(themeCard)
+
         stack.addArrangedSubview(iconCard())
 
         let addSteps = CardView()
@@ -74,7 +100,7 @@ final class WidgetStudioViewController: UIViewController {
 
         stack.addArrangedSubview(titledCard(title: "Home Screen · medium", caption: "Full schedule card with the 24-hour band.", content: fullCard, height: 190))
         stack.addArrangedSubview(titledCard(title: "Home Screen · small", caption: "State and countdown only.", content: compactCard, height: 150))
-        stack.addArrangedSubview(titledCard(title: "Lock Screen", caption: "Single-line state and countdown.", content: lockCard, height: 92))
+        stack.addArrangedSubview(titledCard(title: "Lock Screen", caption: "The redesigned accessory layout: state, live countdown and the switch time.", content: lockCard, height: 92))
         stack.addArrangedSubview(titledCard(title: "In-app card", caption: "Same data as the expanded widget layout. This is not a Dynamic Island Live Activity.", content: liveCard, height: 132))
 
         let policy = CardView()
@@ -84,13 +110,13 @@ final class WidgetStudioViewController: UIViewController {
 
         let shared = CardView()
         shared.content.addArrangedSubview(Labels.title("What the widget can read"))
-        shared.content.addArrangedSubview(Labels.caption("The widget uses the App Group " + WidgetShared.appGroupIdentifier + " when the signed build provides it. This build also keeps its own copy inside the widget extension, so the schedule, the countdown and the last saved balance still appear when the App Group is not granted by the signer. Your API key stays in the iOS Keychain and is never copied into either copy."))
+        shared.content.addArrangedSubview(Labels.caption("The widget uses the App Group " + WidgetShared.appGroupIdentifier + " when the signed build provides it. This build also writes the extension's own copy, so the schedule, the countdown, the theme and the last saved balance still appear when the App Group is not granted by the signer. Your API key stays in the iOS Keychain and is never copied into either copy."))
         shared.content.addArrangedSubview(bridgeLabel)
         stack.addArrangedSubview(shared)
 
         let limits = CardView()
         limits.content.addArrangedSubview(Labels.title("Signing requirement"))
-        limits.content.addArrangedSubview(Labels.caption("The app bundle and the DeepSeekPulseWidgets extension must be signed together with the same team. If the signer grants the App Group to one bundle only, the widget still counts down from its own copy but shows your balance only after you open this app once more."))
+        limits.content.addArrangedSubview(Labels.caption("The app bundle and the DeepSeekPulseWidgets extension must be signed together with the same team. If the signer grants the App Group to one bundle only, the widget still counts down and keeps the last saved balance and theme from its own copy."))
         stack.addArrangedSubview(limits)
 
         stack.addArrangedSubview(statusLabel)
@@ -112,9 +138,8 @@ final class WidgetStudioViewController: UIViewController {
         let text = UIStackView()
         text.axis = .vertical
         text.spacing = 6
-        text.addArrangedSubview(Labels.caption(AppIcon.hasBundledIcon
-                                               ? "This build includes a compiled app icon, so the Home Screen shows this mark."
-                                               : "This build ran without a compiled icon asset. The mark above is drawn by the app; reinstalling from the newer IPA replaces the blank icon."))
+        text.addArrangedSubview(Labels.caption(AppIcon.shortStatus))
+        text.addArrangedSubview(Labels.caption(AppIcon.statusLine))
 
         let row = UIStackView(arrangedSubviews: [icon, text])
         row.axis = .horizontal
@@ -162,11 +187,17 @@ final class WidgetStudioViewController: UIViewController {
         let now = Date()
         let schedule = store.schedule
         let snapshot = WidgetPlanner.snapshot(schedule: schedule, at: now)
+        let appearance = store.widgetAppearance.normalised()
 
-        fullCard.apply(snapshot: snapshot, schedule: schedule, now: now)
-        compactCard.apply(snapshot: snapshot, schedule: schedule, now: now)
+        view.backgroundColor = AppColors.background
+        fullCard.apply(snapshot: snapshot, schedule: schedule, now: now, appearance: appearance)
+        compactCard.apply(snapshot: snapshot, schedule: schedule, now: now, appearance: appearance)
         lockCard.apply(snapshot: snapshot, schedule: schedule, now: now)
         liveCard.apply(snapshot: snapshot, schedule: schedule, now: now)
+
+        themeSummaryLabel.text = "Theme " + appearance.theme.name + " · small " + appearance.smallDesign.title
+            + " · medium " + appearance.mediumDesign.title
+        themeSummaryLabel.textColor = AppColors.textDim
 
         var status = "State " + snapshot.state.label
         status += " · " + snapshot.dayKey + " (" + snapshot.weekdayLabel + ")"
@@ -175,6 +206,14 @@ final class WidgetStudioViewController: UIViewController {
             status += " · holiday calendar unverified for this day"
         }
         statusLabel.text = status
+    }
+
+    @objc private func appearanceChanged() {
+        render()
+    }
+
+    @objc private func themesTapped() {
+        onRequestThemes?()
     }
 
     @objc private func closeTapped() {
