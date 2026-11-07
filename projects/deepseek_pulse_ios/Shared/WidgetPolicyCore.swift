@@ -170,7 +170,15 @@ enum WidgetTimelinePlanner {
 
     /// The next instant the widget should be allowed to ask iOS for fresh data, bounded by the
     /// policy maximum. A request, not a promise.
+    ///
+    /// 1.0.9: shortened from the policy maximum to a quarter hour. A `Text(.timer)` keeps ticking on
+    /// its own, but the state word, the band and the stale badge only move when a new entry exists,
+    /// so a four-hour gap left a Lock Screen widget looking frozen. Fifteen minutes is still far
+    /// inside the budget iOS grants and it lets the widget notice an answer the app wrote.
     static func reloadDate(now: Date) -> Date {
-        now.addingTimeInterval(WidgetPolicy.maximumRefreshInterval)
+        now.addingTimeInterval(widgetReloadInterval)
     }
+
+    /// How far apart timeline reloads are requested. A request only: iOS decides the real moment.
+    static let widgetReloadInterval: TimeInterval = 15 * 60
 }
