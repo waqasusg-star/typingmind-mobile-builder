@@ -1,28 +1,30 @@
 import Foundation
 import WidgetKit
 
-// DeepSeek Pulse — WidgetKit timeline entry and provider.
+// DeepSeek Pulse — WidgetKit timeline provider and the extension-side snapshot store.
 //
 // Compiled into the DeepSeekPulseWidgets extension together with Shared/*.swift and
-// Sources/RequestPolicy.swift. All pricing maths is delegated to WidgetPlanner, so the widget and the
-// app cannot disagree. The provider makes no network request and never reads the Keychain: it reads
-// the snapshot bytes the app wrote.
+// Sources/RequestPolicy.swift. All pricing maths is delegated to WidgetPlanner(…Core.swift), so the
+// widget and the app cannot disagree. The provider makes no network request and never reads the
+// Keychain: it reads the snapshot bytes the app wrote.
 //
-// Two consequences of the private signing service are handled here, and they are what keeps the
-// widget live:
+// Two consequences of the signing service are handled here, and they are what keeps the widget live:
 //   * the App Group container may be missing, so the extension keeps its OWN copy of the snapshot
 //     in its local Application Support directory and prefers whichever copy is newer;
-//   * iOS draws timelines for extensions it considers in-use, so the extension rebuilds one embedded
-//     copy from the schedule constants even before the app has ever written a snapshot. That copy
-//     carries no balance and says so; it is not invented account data. It does keep the last
-//     appearance, so a chosen theme and design survive a cold start.
+//   * iOS draws timelines for extensions it considers in-use, so the extension rebuilds one
+//     embedded copy from the schedule constants even before the app has ever written a snapshot.
+//     That copy carries no balance and says so; it is not invented account data.
+//
+// 1.0.6 adds the appearance (theme + design) and the available balance to every entry, so the ten
+// designs can be drawn entirely from a PulseEntry.
 
 // MARK: - Extension-side writer
 
+/// Writes the extension's own snapshot copy.
+///
+/// Safe to call from a timeline provider: it only touches the extension container, never the
+/// Keychain, never the network and never the app's UserDefaults.
 enum PulseWidgetLocalStore {
-
-    /// Memoised so a second refresh in the same process does not rewrite the file.
-    private static var lastSignature: String?
 
     /// Ensures the local tier holds a usable payload, and mirrors the newest readable payload into
     /// it so a later refresh can still decode after the App Group file becomes unavailable.
@@ -34,6 +36,8 @@ enum PulseWidgetLocalStore {
         if let payload = loaded.envelope.payload,
            loaded.envelope.state.isUsable,
            loaded.tier != .extensionLocal {
+            // Copy the newest readable payload into the extension tier so the widget survives the
+            // loss of the group container.
             WidgetSnapshotStore.write(payload: payload, to: .extensionLocal, location: location)
             return loaded
         }
@@ -42,14 +46,12 @@ enum PulseWidgetLocalStore {
             return loaded
         }
 
-        // No usable payload anywhere: publish the built-in schedule snapshot so the widget can count
-        // down and show PEAK / OFF-PEAK immediately. No balance is fabricated.
-        let seeded = WidgetSnapshotPayload.builtIn(now: date, appearance: loaded.envelope.payload?.appearance)
-        let signature = String(date.timeIntervalSince1970) + (loaded.envelope.payload?.appearance?.summary ?? "default")
-        if lastSignature != signature {
-            lastSignature = signature
-            WidgetSnapshotStore.write(payload: seeded, to: .extensionLocal, location: location)
-        }
+        // No usable payload anywhere: publish the built-in schedule snapshot so the widget can
+        // count down and show PEAK / OFF-PEAK immediately. No balance is fabricated. The appearance
+        // already stored in this tier is carried over, so a chosen theme is not lost.
+        let existingAppearance = loaded.envelope.payload?.appearance
+        let seeded = WidgetSnapshotPayload.builtIn(now: date, appearance: existingAppearance)
+        WidgetSnapshotStore.write(payload: seeded, to: .extensionLocal, location: location)
         return WidgetSnapshotStore.Loaded(envelope: WidgetCacheCodec.envelope(for: seeded, now: date),
                                           tier: .extensionLocal)
     }
@@ -96,6 +98,45 @@ struct PulseEntry: TimelineEntry {
         return WidgetPlanner.countdownCaption(snapshot: snapshot, discountsEnabled: schedule.discountsEnabled)
     }
 
+    // MARK: Balance and statistics (added in 1.0.6)
+
+    /// The available balance, exactly as the app formatted it. Never invents a number.
+    var balanceText: String { envelope.balanceLine() }
+
+    /// How fresh the balance is, or why it is not available.
+    var balanceCaption: String { envelope.balanceCaption(now: date) }
+
+    var grantedText: String {
+        envelope.payload?.balance?.grantedText.isEmpty == false
+            ? (envelope.payload?.balance?.grantedText ?? "--")
+            : "--"
+    }
+
+    var toppedUpText: String {
+        envelope.payload?.balance?.toppedUpText.isEmpty == false
+            ? (envelope.payload?.balance?.toppedUpText ?? "--")
+            : "--"
+    }
+
+    /// "3h 20m" style label for the peak time left today.
+    var peakLeftText: String {
+        guard let snapshot = snapshot, envelope.state.isUsable else { return "--" }
+        guard let schedule = envelope.schedule, schedule.discountsEnabled else { return "--" }
+        let minutes = snapshot.peakMinutesLeftToday
+        if minutes == 0 { return "0m" }
+        let hours = minutes / 60
+        let rest = minutes % 60
+        if hours == 0 { return String(rest) + "m" }
+        if rest == 0 { return String(hours) + "h" }
+        return String(hours) + "h " + String(rest) + "m"
+    }
+
+    /// Local clock time of the next switch, for designs that show when rather than how long.
+    var switchClockText: String {
+        guard let target = nextSwitchAt else { return "--:--" }
+        return ClockFormat.localTimeLabel(target)
+    }
+
     var footnote: String {
         guard let schedule = envelope.schedule, let snapshot = snapshot else {
             return envelope.state.explainer
@@ -104,42 +145,7 @@ struct PulseEntry: TimelineEntry {
         if envelope.state == .stale {
             parts.append("data " + ClockFormat.relative(envelope.payload?.writtenAt ?? date, now: date))
         }
-        return parts.joined(separator: " - ")
-    }
-
-    // MARK: Balance and secondary strings
-
-    /// The available balance exactly as the app formatted it, or an honest placeholder.
-    var balanceText: String { envelope.balanceLine() }
-
-    /// Age of the balance, or why there is none.
-    var balanceCaption: String { envelope.balanceCaption(now: date) }
-
-    var grantedText: String { envelope.balance?.grantedText ?? "--" }
-
-    var toppedUpText: String { envelope.balance?.toppedUpText ?? "--" }
-
-    /// Peak time remaining today, as a short label.
-    var peakLeftText: String {
-        guard let snapshot = snapshot else { return "--" }
-        guard snapshot.totalPeakMinutesToday > 0 else { return "None" }
-        let minutes = snapshot.peakMinutesLeftToday
-        if minutes >= 60 {
-            let hours = minutes / 60
-            let rest = minutes % 60
-            return rest == 0 ? String(hours) + "h" : String(hours) + "h" + String(rest) + "m"
-        }
-        return String(minutes) + "m"
-    }
-
-    /// Local clock time of the next switch, for the Countdown Hero design.
-    var switchClockText: String {
-        guard let target = nextSwitchAt else { return "--:--" }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = .current
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: target)
+        return parts.joined(separator: " · ")
     }
 }
 
@@ -168,6 +174,7 @@ struct PulseTimelineProvider: TimelineProvider {
         let reload = WidgetTimelinePlanner.reloadDate(now: now)
 
         guard let schedule = envelope.schedule else {
+            // No usable schedule at all: one entry plus a bounded retry date.
             let entries = [PulseEntry(date: now, envelope: envelope),
                            PulseEntry(date: reload, envelope: envelope)]
             completion(Timeline(entries: entries, policy: .after(reload)))
