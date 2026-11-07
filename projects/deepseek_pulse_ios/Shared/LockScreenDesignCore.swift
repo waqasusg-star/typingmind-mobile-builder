@@ -192,9 +192,9 @@ enum LockScreenText {
     }
 
     /// Local switch time, e.g. "04:00".
-    static func switchTime(snapshot: WidgetPlanner.Snapshot, timeZone: TimeZone = .current) -> String {
+    static func switchTime(snapshot: WidgetPlanner.Snapshot) -> String {
         guard let target = snapshot.nextSwitchAt else { return "" }
-        return ClockFormat.localTimeLabel(target, timeZone: timeZone)
+        return ClockFormat.localTimeLabel(target)
     }
 
     /// Whether the data behind the accessory widget is old enough to matter on the Lock Screen.
