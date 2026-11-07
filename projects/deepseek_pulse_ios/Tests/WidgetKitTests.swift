@@ -187,8 +187,8 @@ func widgetKitChecks() throws {
     // so the two-argument call uses the legacy (known) reading, which is what 1.0.9 also shows.
     try expect(PulseBalanceWording.legacySlot(hasBalance: false, hasAPIKey: false) == "Add key in app",
                "a known-absent key asks the user to add one, using the honest 1.0.9 wording")
-    try expect(PulseBalanceWording.legacySlot(hasBalance: false, hasAPIKey: true) == "Load in app",
-               "a stored key with no balance offers to load it")
+    try expect(PulseBalanceWording.legacySlot(hasBalance: false, hasAPIKey: true) == "Open app",
+               "a stored key with no balance invites the user to open the app and load it")
     try expect(PulseBalanceWording.legacySlot(hasBalance: true, hasAPIKey: false) == "", "a real balance always wins over the key wording")
 
     // MARK: Live countdown caption
