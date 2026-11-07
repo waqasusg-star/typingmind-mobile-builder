@@ -8,7 +8,7 @@
   "version": "1.0.7",
   "build_number": "8",
   "minimum_ios": "15.0",
-  "description": "1.0.7 (build 8): Themes button in the toolbar row; Widget Studio gains theme controls and honest previews.",
+  "description": "1.0.7 (build 8): in-app widget previews follow the chosen theme and show the honest balance/key wording.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
