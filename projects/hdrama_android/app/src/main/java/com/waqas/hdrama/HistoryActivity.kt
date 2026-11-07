@@ -33,12 +33,10 @@ class HistoryActivity : ComponentActivity() {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
 
-        // Aurora behind everything; a ScrollView holds the content column.
         val (root, content) = Visual.auroraScreen(this)
         val scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false; addView(content) }
         root.addView(scroll)
 
-        // Hero header over the gradient fade.
         val hero = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = Visual.heroFade()
@@ -49,7 +47,7 @@ class HistoryActivity : ComponentActivity() {
                 letterSpacing = -0.02f
                 setPadding(0, dp(6), 0, dp(8))
             })
-            addView(Visual.accentRule(this), LinearLayout.LayoutParams(dp(56), dp(3)))
+            addView(Visual.accentRule(this@HistoryActivity), LinearLayout.LayoutParams(dp(56), dp(3)))
         }
         content.addView(hero)
 
@@ -96,7 +94,6 @@ class HistoryActivity : ComponentActivity() {
         items.forEach { item -> rows.addView(historyCard(item)) }
     }
 
-    /** Elevated glass row with poster, title, episode position and a resume badge. */
     private fun historyCard(item: SavedDrama): View {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
