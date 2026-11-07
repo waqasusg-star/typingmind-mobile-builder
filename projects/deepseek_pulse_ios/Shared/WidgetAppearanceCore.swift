@@ -175,12 +175,23 @@ enum WidgetDesign: String, Codable, CaseIterable, Equatable {
 enum PulseBalanceWording {
 
     /// Wording used in the balance slot itself (short).
+    ///
+    /// 1.0.9: the slot no longer prints "No key". With no known key state it says "Open app"; only a
+    /// positive "no key" report says "Add key in app". A widget cannot read the Keychain, so the
+    /// other wording was a guess that read as an error on a working account.
     static func slot(hasBalance: Bool, hasAPIKey: Bool) -> String {
         if hasBalance { return "" }
-        return hasAPIKey ? "Load in app" : "Add API key"
+        return hasAPIKey ? "Load in app" : "Open app"
     }
 
-    /// Wording used under the balance slot (longer, explains the next action).
+    /// Wording used in the balance slot when the key state is known explicitly.
+    static func slot(hasBalance: Bool, hasAPIKey: Bool, hasAPIKeyKnown: Bool) -> String {
+        if hasBalance { return "" }
+        return WidgetRefreshHandshakeRules.noBalanceTitle(hasAPIKeyKnown: hasAPIKeyKnown,
+                                                        hasAPIKey: hasAPIKey)
+    }
+
+    /// The long caption under the balance slot.
     static func caption(hasBalance: Bool, hasAPIKey: Bool, fetchedAtAge: TimeInterval?, isStale: Bool) -> String {
         if hasBalance {
             guard let age = fetchedAtAge else { return "Saved balance" }
@@ -189,7 +200,19 @@ enum PulseBalanceWording {
         }
         return hasAPIKey
             ? "Key saved - open the app to load the balance"
-            : "Add your API key in Settings"
+            : WidgetRefreshHandshakeRules.noBalanceCaption(hasAPIKeyKnown: true, hasAPIKey: false)
+    }
+
+    /// Caption that respects an unknown key state.
+    static func caption(hasBalance: Bool,
+                        hasAPIKeyKnown: Bool,
+                        hasAPIKey: Bool,
+                        fetchedAtAge: TimeInterval?,
+                        isStale: Bool) -> String {
+        if hasBalance { return caption(hasBalance: true, hasAPIKey: hasAPIKey,
+                                       fetchedAtAge: fetchedAtAge, isStale: isStale) }
+        return WidgetRefreshHandshakeRules.noBalanceCaption(hasAPIKeyKnown: hasAPIKeyKnown,
+                                                           hasAPIKey: hasAPIKey)
     }
 
     /// Never claim a key is missing when the snapshot could not be read at all.
