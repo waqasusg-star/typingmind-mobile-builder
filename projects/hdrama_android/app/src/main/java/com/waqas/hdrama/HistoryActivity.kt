@@ -63,6 +63,7 @@ class HistoryActivity : ComponentActivity() {
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 background = Visual.glass(this@HistoryActivity, 0x99)
                 setTextColor(AppColors.danger)
+                contentDescription = "Clear history"
                 setOnClickListener { confirmClear() }
             }
             addView(clear, LinearLayout.LayoutParams(-2, dp(40)))
@@ -103,6 +104,7 @@ class HistoryActivity : ComponentActivity() {
         }
         val poster = poster(item.url, item.title, width = 64, height = 92).apply { background = Visual.posterFrame(this@HistoryActivity) }
         card.addView(poster)
+        val timing = "${time(item.position)}" + if (item.duration > 0) " / ${time(item.duration)}" else ""
         val text = column().apply {
             setPadding(dp(14), 0, 0, 0)
             addView(label(item.title, 16f).apply {
@@ -110,20 +112,36 @@ class HistoryActivity : ComponentActivity() {
                 maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END
             })
-            addView(label("EP. ${item.episode}" + if (item.position > 0) " · resumed at ${time(item.position)}" else "", 12f).apply {
+            addView(label("EP.${item.episode} · $timing", 12f).apply {
                 setTextColor(Hd.muted); setPadding(0, dp(6), 0, dp(10))
             })
             addView(Visual.badge(this@HistoryActivity, "RESUME"))
         }
         card.addView(text, LinearLayout.LayoutParams(0, -2, 1f))
         card.setOnClickListener { open(item.url) }
+        card.setOnLongClickListener { confirmRemove(item) }
         card.isFocusable = true
-        card.contentDescription = "Resume ${item.title}"
+        card.contentDescription = "Continue watching: ${item.title}"
         return card
     }
 
     private fun open(url: String) {
         startActivity(Intent(this, PlayerActivity::class.java).putExtra("series", url))
+    }
+
+    /** Long-press removes this one entry with confirmation; the record's resume data survives. */
+    private fun confirmRemove(item: SavedDrama): Boolean {
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("Remove from history?")
+            .setMessage("\"${item.title}\" will be removed from History. Favorites, downloads and resume positions are kept.")
+            .setPositiveButton("Remove") { _, _ ->
+                library.removeHistory(item.url); refresh()
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
+        dialog.show()
+        polishDialog(dialog)
+        return true
     }
 
     private fun confirmClear() {
