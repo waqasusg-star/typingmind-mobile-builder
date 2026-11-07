@@ -8,6 +8,7 @@ import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -41,11 +42,28 @@ class HistoryActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             background = Visual.heroFade()
             setPadding(dp(20), dp(18), dp(20), dp(16))
-            addView(eyebrow("YOUR JOURNEY"))
-            addView(label("History", 30f).apply {
-                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                letterSpacing = -0.02f
-                setPadding(0, dp(6), 0, dp(8))
+            // The back control carries an exact contentDescription so the design review
+            // test can locate it without depending on the layout order.
+            addView(LinearLayout(this@HistoryActivity).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                addView(ImageButton(this@HistoryActivity).apply {
+                    setImageDrawable(PlayerIcon("back"))
+                    background = Visual.glass(this@HistoryActivity, 0x99)
+                    imageTintList = android.content.res.ColorStateList.valueOf(Hd.text)
+                    setPadding(dp(12), dp(12), dp(12), dp(12))
+                    contentDescription = "Back"
+                    setOnClickListener { finish() }
+                }, LinearLayout.LayoutParams(dp(48), dp(48)))
+                addView(LinearLayout(this@HistoryActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(14), 0, 0, 0)
+                    addView(eyebrow("YOUR JOURNEY"))
+                    addView(label("History", 30f).apply {
+                        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                        letterSpacing = -0.02f
+                        setPadding(0, dp(4), 0, dp(6))
+                    })
+                }, LinearLayout.LayoutParams(0, -2, 1f))
             })
             addView(Visual.accentRule(this@HistoryActivity), LinearLayout.LayoutParams(dp(56), dp(3)))
         }
@@ -79,11 +97,13 @@ class HistoryActivity : ComponentActivity() {
             WindowInsetsCompat.CONSUMED
         }
         setContentView(root)
+        render()
     }
 
-    override fun onResume() { super.onResume(); refresh() }
+    override fun onResume() { super.onResume(); render() }
 
-    private fun refresh() {
+    /** Rebuild the row list. Called by lifecycle and directly by the design review test. */
+    private fun render() {
         rows.removeAllViews()
         val items = library.history()
         usage.text = if (items.isEmpty()) "" else "${items.size} series · recently watched"
@@ -135,7 +155,7 @@ class HistoryActivity : ComponentActivity() {
             .setTitle("Remove from history?")
             .setMessage("\"${item.title}\" will be removed from History. Favorites, downloads and resume positions are kept.")
             .setPositiveButton("Remove") { _, _ ->
-                library.removeHistory(item.url); refresh()
+                library.removeHistory(item.url); render()
             }
             .setNegativeButton("Cancel", null)
             .create()
@@ -149,7 +169,7 @@ class HistoryActivity : ComponentActivity() {
             .setTitle("Clear history?")
             .setMessage("This removes recently watched entries. Favorites, downloads and resume positions are kept.")
             .setPositiveButton("Clear") { _, _ ->
-                library.clearHistory(); refresh()
+                library.clearHistory(); render()
             }
             .setNegativeButton("Cancel", null)
             .create()
