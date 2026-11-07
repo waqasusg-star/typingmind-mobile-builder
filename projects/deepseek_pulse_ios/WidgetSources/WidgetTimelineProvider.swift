@@ -120,7 +120,7 @@ struct PulseEntry: TimelineEntry {
     /// instruction rather than a bare "No key".
     /// Why the widget wants the app opened. Nil when nothing needs refreshing, or when the widget is
     /// still inside the handshake cooldown so a tap would loop.
-    computedRefreshReason: WidgetRefreshReason? {
+    var computedRefreshReason: WidgetRefreshReason? {
         let handshake = WidgetRefreshLedger.read()
         let wanted = WidgetRefreshHandshakeRules.shouldRequest(state: envelope.state,
                                                               hasBalance: hasBalance,
