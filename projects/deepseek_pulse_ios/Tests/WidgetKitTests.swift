@@ -454,6 +454,10 @@ func widgetKitChecks() throws {
     try expect(themedEnvelope.appearance.mediumDesign == .ledger, "the medium design survives encode/decode")
     try expect(!themedEnvelope.appearance.showBalance, "the balance switch survives encode/decode")
 
+    // Report every failing label from this single execution, then fail. Nothing is printed as a pass.
+    if !failures.isEmpty {
+        throw WidgetKitCheckFailure.failed("failed " + String(failures.count) + " of " + String(checked) + ": " + failures.joined(separator: " | "))
+    }
 
     print("widget kit checks passed: " + String(checked))
 }
