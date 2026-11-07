@@ -117,7 +117,7 @@ final class WidgetStudioViewController: UIViewController {
     /// Writes the shared snapshot when the screen opens, so the widget is not left empty.
     private func writeSnapshot() {
         let result = WidgetBridge.refresh(store: SettingsStore.shared)
-        bridgeLabel.text = WidgetRefreshHandoff.summary(for: result)
+        bridgeLabel.text = WidgetRefreshHandoff.summary(for: result.outcome)
         bridgeLabel.textColor = result.isWritten ? AppColors.offPeak : AppColors.danger
         // WidgetKit gives no completion callback: ask again once shortly after, in case the first
         // request was coalesced with a redraw iOS was already doing.

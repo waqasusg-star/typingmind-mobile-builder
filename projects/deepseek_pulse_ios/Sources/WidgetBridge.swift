@@ -74,6 +74,22 @@ enum WidgetBridge {
                 return "Snapshot write failed: " + detail
             }
         }
+
+        /// The app-independent outcome the shared summary describes.
+        var outcome: WidgetHandoffOutcome {
+            switch self {
+            case .written:
+                return .sharedFile
+            case .stagedForExtension:
+                return .stagedForExtension
+            case .groupUnavailable, .ioFailure:
+                return .nothingWritten
+            case .encodingFailed:
+                return .encodingFailed
+            case .secretRejected:
+                return .secretRejected
+            }
+        }
     }
 
     /// Encodes and writes the payload atomically. Never throws into the caller.
