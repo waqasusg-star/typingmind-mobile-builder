@@ -8,8 +8,15 @@ import SwiftUI
 // hands everything to that design's view. A saved design that does not belong to the family falls
 // back to the family default, so a stale payload cannot produce an empty widget.
 //
-// The Lock Screen accessory families keep their own compact views: iOS draws those in its own
-// monochrome style, so a colour theme does not apply there.
+// 1.0.7 rebuilds the three Lock Screen accessory families. They previously drew a bare gauge with a
+// tiny state word, a frozen-looking "--:--" and `entry.balanceText`, which printed "No key" in a
+// slot nobody could act on. The accessory views are now:
+//   * inline      a compact "OFF-PEAK 3h 12m" sentence using the iOS-rendered timer
+//   * circular    a progress ring with the state word and the peak time left
+//   * rectangular a two-column card: state + level on the left, live countdown and switch time on the
+//                 right
+// None of them claims a key is missing: the accessory slot is too small to explain an account, so
+// the balance is not shown there at all.
 
 struct WidgetEntryView: View {
     var entry: PulseEntry
@@ -107,59 +114,104 @@ struct WidgetEntryView: View {
 }
 
 // MARK: - Lock Screen accessories (iOS 16+ only)
+//
+// iOS renders these in its own vibrant, monochrome material. They therefore use primary / secondary
+// foreground styles, a single accent for the ring, and no palette colours: a themed gradient here
+// would be flattened by the system and would only look muddy.
 
+/// One line beside the Lock Screen clock.
 @available(iOSApplicationExtension 16.0, *)
 struct PulseInlineView: View {
     var entry: PulseEntry
 
     var body: some View {
         if let target = entry.nextSwitchAt, target > entry.date {
-            Text(entry.headline) + Text(" ") + Text(target, style: .timer)
+            // A view that contains a timer Text is never redrawn by WidgetKit mid-interval, so the
+            // seconds keep ticking on their own.
+            (Text(entry.headline).fontWeight(.bold)
+                + Text("  \u{00b7}  ")
+                + Text(target, style: .timer))
         } else {
-            Text(entry.headline + " " + entry.countdownText)
+            (Text(entry.headline).fontWeight(.bold)
+                + Text("  ")
+                + Text(entry.countdownText))
         }
     }
 }
 
+/// The ring beside the clock.
 @available(iOSApplicationExtension 16.0, *)
 struct PulseCircularView: View {
     var entry: PulseEntry
 
     var body: some View {
-        Gauge(value: progress) {
-            Text("Peak")
+        Gauge(value: entry.peakProgress) {
+            // The Gauge label is only read by VoiceOver; the visible centre is the state word.
+            Text("Peak share of the day")
         } currentValueLabel: {
-            // A gauge cannot host a ticking Text, so the centre shows the state word rather than a
-            // frozen number that would look like a live countdown.
-            Text(entry.headline)
-                .font(.system(size: 9, weight: .bold))
-                .minimumScaleFactor(0.5)
+            VStack(spacing: -1) {
+                Text(entry.shortStateWord)
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+                Text(entry.peakLeftText)
+                    .font(.system(size: 8, weight: .semibold, design: .rounded))
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+            }
         }
         .gaugeStyle(.accessoryCircular)
-        .privacySensitive(true)
-    }
-
-    private var progress: Double {
-        guard let snapshot = entry.snapshot, snapshot.totalPeakMinutesToday > 0 else { return 0 }
-        let elapsed = snapshot.totalPeakMinutesToday - snapshot.peakMinutesLeftToday
-        return min(1, max(0, Double(elapsed) / Double(snapshot.totalPeakMinutesToday)))
+        .tint(PulseGaugeTint.tint(entry: entry))
+        .privacySensitiveIfAvailable()
+        .accessibilityLabel(entry.headline + ", " + entry.peakLeftText + " of peak left today")
     }
 }
 
+/// The wide card below the clock.
 @available(iOSApplicationExtension 16.0, *)
 struct PulseRectangularView: View {
     var entry: PulseEntry
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(entry.headline)
-                .font(.system(size: 12, weight: .heavy))
-            PulseCountdown(entry: entry, size: 17)
-            Text(entry.balanceText)
-                .font(.system(size: 10, weight: .semibold))
-                .lineLimit(1)
+        HStack(alignment: .center, spacing: 9) {
+            // Left: the pricing state and what the countdown is counting to.
+            VStack(alignment: .leading, spacing: 1) {
+                Text(entry.headline)
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text(entry.countdownLabel.uppercased())
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            // Right: the live countdown, then when the switch lands in local time.
+            VStack(alignment: .trailing, spacing: 0) {
+                PulseCountdown(entry: entry, size: 19, weight: .bold, ink: .primary)
+                Text(entry.switchClockText)
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .privacySensitive(true)
+        .privacySensitiveIfAvailable()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(entry.headline + ". " + entry.countdownLabel + " " + entry.countdownText)
+    }
+}
+
+/// Tint for the circular gauge: peak and off-peak read differently at a glance, but both stay inside
+/// the system material.
+@available(iOSApplicationExtension 16.0, *)
+enum PulseGaugeTint {
+    static func tint(entry: PulseEntry) -> Color {
+        guard let schedule = entry.envelope.schedule else { return .gray }
+        switch schedule.state(at: entry.date) {
+        case .peak: return .orange
+        case .offPeak: return .green
+        case .standard: return .gray
+        }
     }
 }

@@ -6,6 +6,12 @@ import SwiftUI
 //
 // Ten designs are built from these parts. Colours come from the theme inside the payload, so the
 // widget follows the palette chosen in Widget Studio.
+//
+// 1.0.7 changes:
+//   * the band colours come from the palette and the current state instead of two hard-coded values;
+//   * the balance line renders the honest wording from PulseBalanceWording rather than a raw
+//     "No key", and keeps the number visible whenever a real balance exists;
+//   * the status badge exposes an explanation to VoiceOver instead of only a CACHED tag.
 
 // MARK: - Theme
 
@@ -37,6 +43,15 @@ struct PulseMood {
     /// Darkening applied over a light ramp so white text keeps contrast.
     var rampOverlay: Double {
         PulseThemes.luminance(theme.background) > 0.55 ? 0.34 : 0.0
+    }
+
+    /// Band colour for a pricing state, taken from the palette so every theme colours its own band.
+    func bandColour(for state: PricingState) -> Color {
+        switch state {
+        case .peak: return PulseMood.colour(theme.peak).opacity(0.95)
+        case .offPeak: return PulseMood.colour(theme.offPeak).opacity(0.95)
+        case .standard: return Color.white.opacity(0.28)
+        }
     }
 }
 
@@ -84,7 +99,11 @@ struct PulseCountdownCaption: View {
     }
 }
 
-/// The available balance plus how old it is.
+/// The balance slot plus how old it is, or what to do next when there is no balance.
+///
+/// This is the one place the Home Screen widgets word the account. `entry.balanceText` already
+/// routes through PulseBalanceWording, so a widget can never print "No key" for a snapshot whose key
+/// state is simply unknown.
 struct PulseBalanceLine: View {
     var entry: PulseEntry
     var size: CGFloat = 13
@@ -95,16 +114,20 @@ struct PulseBalanceLine: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(entry.balanceText)
-                .font(.system(size: size, weight: .semibold, design: .rounded))
-                .foregroundColor(ink.opacity(0.94))
+                .font(.system(size: entry.hasBalance ? size : size * 0.85,
+                              weight: .semibold,
+                              design: .rounded))
+                .foregroundColor(ink.opacity(entry.hasBalance ? 0.94 : 0.80))
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
-                .accessibilityLabel("Available balance " + entry.balanceText)
+                .accessibilityLabel(entry.hasBalance
+                                    ? "Available balance " + entry.balanceText
+                                    : entry.balanceText)
             if showCaption {
                 Text(entry.balanceCaption)
                     .font(.system(size: captionSize, weight: .medium))
                     .foregroundColor(ink.opacity(0.62))
-                    .lineLimit(1)
+                    .lineLimit(2)
                     .minimumScaleFactor(0.7)
             }
         }
@@ -148,6 +171,7 @@ struct PulseStatusBadge: View {
                 .background(Color.black.opacity(0.32))
                 .clipShape(Capsule())
                 .privacySensitiveIfAvailable()
+                .accessibilityLabel(entry.envelope.state.explainer)
         }
     }
 }
@@ -157,6 +181,7 @@ struct PulseDayBand: View {
     var schedule: PricingSchedule
     var date: Date
     var barHeight: CGFloat = 8
+    var mood: PulseMood?
 
     var body: some View {
         GeometryReader { geometry in
@@ -184,6 +209,9 @@ struct PulseDayBand: View {
     }
 
     private func colour(for state: PricingState) -> Color {
+        if let mood = mood {
+            return mood.bandColour(for: state)
+        }
         switch state {
         case .peak: return Color(red: 0.98, green: 0.58, blue: 0.13)
         case .offPeak: return Color(red: 0.18, green: 0.72, blue: 0.50)
@@ -259,6 +287,19 @@ extension View {
             self.privacySensitive(true)
         } else {
             self
+        }
+    }
+}
+
+// MARK: - Entry helpers used by the Lock Screen views
+
+extension PulseEntry {
+
+    /// "PEAK", "OFF" or "STD" - short enough for a circular complication.
+    var shortStateWord: String {
+        switch headline {
+        case "OFF-PEAK": return "OFF"
+        default: return headline
         }
     }
 }
