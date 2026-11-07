@@ -2,9 +2,7 @@ package com.waqas.hdrama
 
 import android.content.Intent
 import android.graphics.Color
-import android.graphics.Typeface
 import android.os.Bundle
-import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -13,14 +11,13 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
 /**
  * Recently watched, reverted to the original working structure.
- *
  * Uses only the shared Ui.kt helpers so the view tree stays stable for the existing test suite.
- * Visual polish comes from the theme layer, not from restructuring this screen.
  */
 class HistoryActivity : ComponentActivity() {
     private val library by lazy { DramaLibrary(this) }
@@ -68,7 +65,6 @@ class HistoryActivity : ComponentActivity() {
 
     override fun onResume() { super.onResume(); render() }
 
-    /** Rebuild the row list. Called by lifecycle and directly by the design review test. */
     private fun render() {
         rows.removeAllViews()
         val items = library.history()
@@ -93,7 +89,6 @@ class HistoryActivity : ComponentActivity() {
         startActivity(Intent(this, PlayerActivity::class.java).putExtra("series", url))
     }
 
-    /** Long-press removes this one entry with confirmation; the record's resume data survives. */
     private fun confirmRemove(item: SavedDrama): Boolean {
         val dialog = android.app.AlertDialog.Builder(this)
             .setTitle("Remove from history?")
