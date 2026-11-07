@@ -160,6 +160,44 @@ enum WidgetDesign: String, Codable, CaseIterable, Equatable {
     }
 }
 
+// MARK: - Balance wording
+
+/// The one place that decides what the balance slot says. Foundation-only, so the app previews and
+/// the WidgetKit extension produce identical words for identical state.
+///
+/// Why this exists: the widget used to render "No key" whenever `hasAPIKey` was false, and a
+/// balance request that silently produced nothing also left `hasAPIKey` false. On a phone where the
+/// key is present that reads as the app claiming the key is missing. The rule is now:
+///   * a real available balance always wins;
+///   * a key that is known to be present with no balance yet says "Load in app";
+///   * only a key that is genuinely absent says "Add API key";
+///   * a saved balance with no key flag still shows the number, because the number is real data.
+enum PulseBalanceWording {
+
+    /// Wording used in the balance slot itself (short).
+    static func slot(hasBalance: Bool, hasAPIKey: Bool) -> String {
+        if hasBalance { return "" }
+        return hasAPIKey ? "Load in app" : "Add API key"
+    }
+
+    /// Wording used under the balance slot (longer, explains the next action).
+    static func caption(hasBalance: Bool, hasAPIKey: Bool, fetchedAtAge: TimeInterval?, isStale: Bool) -> String {
+        if hasBalance {
+            guard let age = fetchedAtAge else { return "Saved balance" }
+            let relative = ClockFormat.relative(Date().addingTimeInterval(-age), now: Date())
+            return isStale ? "Saved " + relative : "Updated " + relative
+        }
+        return hasAPIKey
+            ? "Key saved - open the app to load the balance"
+            : "Add your API key in Settings"
+    }
+
+    /// Never claim a key is missing when the snapshot could not be read at all.
+    static func unavailableCaption(state: WidgetDataState) -> String {
+        state.explainer
+    }
+}
+
 // MARK: - Stored appearance
 
 /// Everything the widget needs to draw itself in the chosen style.

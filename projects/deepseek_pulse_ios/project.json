@@ -5,10 +5,10 @@
   "app_name": "DeepSeek Pulse",
   "bundle_id": "com.waqas.deepseekpulse",
   "scheme": "DeepSeekPulse",
-  "version": "1.0.6",
-  "build_number": "7",
+  "version": "1.0.7",
+  "build_number": "8",
   "minimum_ios": "15.0",
-  "description": "DeepSeek Pulse 1.0.6: persist the chosen theme and widget design",
+  "description": "1.0.7 (build 8): centred app icon artwork, Widget Studio theme and design pickers, honest API key state on every widget, redesigned Lock Screen widgets.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
