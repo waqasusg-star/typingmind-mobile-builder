@@ -45,19 +45,23 @@ fun Context.button(value: String, action: () -> Unit) = Button(this).apply {
     text = value; isAllCaps = false; textSize = 13f; minWidth = 0; minimumWidth = 0
     minHeight = dp(48); minimumHeight = dp(48); includeFontPadding = false
     typeface = Typeface.create("sans-serif-medium",Typeface.NORMAL)
+    letterSpacing = 0.02f
     setPadding(dp(12),dp(10),dp(12),dp(10)); maxLines = 2
-    background = android.graphics.drawable.StateListDrawable().apply {
-        addState(intArrayOf(-android.R.attr.state_enabled),surface(AppColors.background,12))
-        addState(intArrayOf(),surface(AppColors.raised,12,true))
+    background = StateListDrawable().apply {
+        addState(intArrayOf(-android.R.attr.state_enabled),surface(AppColors.background,14))
+        addState(intArrayOf(),surface(AppColors.raised,14,true))
     }
-    setTextColor(ColorStateList(arrayOf(intArrayOf(-android.R.attr.state_enabled),intArrayOf()),intArrayOf(0xff747487.toInt(),Color.WHITE)))
+    setTextColor(ColorStateList(arrayOf(intArrayOf(-android.R.attr.state_enabled),intArrayOf()),intArrayOf(0xff747487.toInt(),AppColors.text)))
     setOnClickListener { action() }; contentDescription = value
 }
 fun Button.primary(context: Context) {
     background = StateListDrawable().apply {
-        addState(intArrayOf(-android.R.attr.state_enabled),context.surface(AppColors.raised,12))
-        addState(intArrayOf(),context.surface(accent,12,true))
+        addState(intArrayOf(-android.R.attr.state_enabled),context.surface(AppColors.raised,14))
+        addState(intArrayOf(),Hd.primaryButton(context))
     }
+    typeface = Typeface.create("sans-serif-medium",Typeface.NORMAL)
+    textSize = 14f; isAllCaps = false; letterSpacing = 0.02f
+    minimumHeight = context.dp(48)
     setTextColor(ColorStateList(arrayOf(intArrayOf(-android.R.attr.state_enabled),intArrayOf()),intArrayOf(AppColors.muted,AppColors.background)))
 }
 fun Context.column() = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -66,12 +70,13 @@ fun View.pad(n: Int) { val d = context.dp(n); setPadding(d,d,d,d) }
 fun View.rounded(color: Int) { background = GradientDrawable().apply { setColor(color); cornerRadius = context.dp(16).toFloat() } }
 fun LinearLayout.weight(view: View) { addView(view,LinearLayout.LayoutParams(0,-2,1f).apply { if (childCount > 0) marginStart = context.dp(8) }) }
 fun Context.screenHeader(value: String,onBack: () -> Unit): Pair<LinearLayout,TextView> {
-    val title = label(value,24f).apply { typeface = Typeface.DEFAULT_BOLD; maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
+    val title = label(value,25f).apply { typeface = Typeface.create("sans-serif-medium",Typeface.NORMAL); letterSpacing = -0.01f; maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
     val header = row().apply {
-        setPadding(0,dp(4),0,dp(12))
+        setPadding(0,dp(4),0,dp(14))
         addView(ImageButton(this@screenHeader).apply {
             setImageDrawable(PlayerIcon("back")); background = surface(AppColors.raised,14,true)
-            setPadding(dp(12),dp(12),dp(12),dp(12)); contentDescription = "Back"; setOnClickListener { onBack() }
+            setPadding(dp(12),dp(12),dp(12),dp(12)); imageTintList = ColorStateList.valueOf(AppColors.text)
+            contentDescription = "Back"; setOnClickListener { onBack() }
         },LinearLayout.LayoutParams(dp(48),dp(48)))
         addView(title,LinearLayout.LayoutParams(0,-2,1f).apply { marginStart = dp(14) })
     }
@@ -94,10 +99,10 @@ fun View.refreshPosters() {
     if (this is android.view.ViewGroup) for (i in 0 until childCount) getChildAt(i).refreshPosters()
 }
 fun Context.seriesCard(url: String,title: String,subtitle: String,detail: String,description: String = "$title poster") = row().apply {
-    setPadding(dp(14),dp(14),dp(14),dp(14)); background = surface(interactive = true)
+    setPadding(dp(14),dp(14),dp(14),dp(14)); background = Hd.card(this@seriesCard,true); elevation = dp(2).toFloat()
     addView(poster(url,title,description = description))
     addView(column().apply {
-        addView(label(title,17f).apply { maxLines = 3; ellipsize = TextUtils.TruncateAt.END; typeface = Typeface.DEFAULT_BOLD })
+        addView(label(title,17f).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END; typeface = Typeface.create("sans-serif-medium",Typeface.NORMAL) })
         addView(label(subtitle,12f).apply { setTextColor(AppColors.muted); setPadding(0,dp(8),0,dp(8)) })
         addView(label(detail,13f).apply { setTextColor(accent); maxLines = 2; ellipsize = TextUtils.TruncateAt.END })
     },LinearLayout.LayoutParams(0,-2,1f).apply { marginStart = dp(14) })
@@ -105,7 +110,7 @@ fun Context.seriesCard(url: String,title: String,subtitle: String,detail: String
 fun Context.emptyState(symbol: String,title: String,message: String) = column().apply {
     gravity = Gravity.CENTER; setPadding(dp(24),dp(40),dp(24),dp(40))
     addView(ImageView(this@emptyState).apply { setImageDrawable(PlayerIcon(symbol)); imageTintList = ColorStateList.valueOf(accent); contentDescription = null },LinearLayout.LayoutParams(dp(44),dp(44)))
-    addView(label(title,18f).apply { typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER },LinearLayout.LayoutParams(-1,-2).apply { topMargin = dp(18) })
+    addView(label(title,18f).apply { typeface = Typeface.create("sans-serif-medium",Typeface.NORMAL); gravity = Gravity.CENTER },LinearLayout.LayoutParams(-1,-2).apply { topMargin = dp(18) })
     addView(label(message,14f).apply { setTextColor(AppColors.muted); gravity = Gravity.CENTER; setLineSpacing(dp(3).toFloat(),1f) },LinearLayout.LayoutParams(-1,-2).apply { topMargin = dp(10) })
 }
 fun polishDialog(dialog: AlertDialog): AlertDialog {
