@@ -192,11 +192,18 @@ final class WidgetStudioViewController: UIViewController {
         view.backgroundColor = AppColors.background
         fullCard.apply(snapshot: snapshot, schedule: schedule, now: now, appearance: appearance)
         compactCard.apply(snapshot: snapshot, schedule: schedule, now: now, appearance: appearance)
-        lockCard.apply(snapshot: snapshot, schedule: schedule, now: now)
+        // 1.0.9: the preview draws the SAME accessory design the Lock Screen will, using the shared
+        // LockScreenText strings.
+        lockCard.apply(style: appearance.lockScreen.rectangular,
+                       snapshot: snapshot,
+                       schedule: schedule,
+                       now: now)
         liveCard.apply(snapshot: snapshot, schedule: schedule, now: now)
 
-        themeSummaryLabel.text = "Theme " + appearance.theme.name + " · small " + appearance.smallDesign.title
+        themeSummaryLabel.text = "Theme " + appearance.theme.name
+            + " · small " + appearance.smallDesign.title
             + " · medium " + appearance.mediumDesign.title
+            + " · Lock Screen " + appearance.lockScreen.rectangular.title
         themeSummaryLabel.textColor = AppColors.textDim
 
         var status = "State " + snapshot.state.label
