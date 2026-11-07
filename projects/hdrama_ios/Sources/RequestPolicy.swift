@@ -2,12 +2,21 @@ import Foundation
 
 /// Pure URL/cookie rules, tested independently of UIKit and website availability.
 enum RequestPolicy {
+    /// Resolves a poster address, keeping the signed query string (CDN tokens live there) and
+    /// dropping only the fragment. No new query items are added or reordered.
     static func posterURL(_ raw: String, base: String) -> URL? {
         guard let url = URL(string: raw, relativeTo: URL(string: base))?.absoluteURL,
               url.scheme?.lowercased() == "https", url.user == nil, url.password == nil else { return nil }
         var parts = URLComponents(url: url, resolvingAgainstBaseURL: false)
         parts?.fragment = nil
         return parts?.url
+    }
+
+    /// Posters may legitimately live on a CDN host, so the host is not pinned; only the transport,
+    /// credentials and a non-empty absolute path are enforced before a request is made.
+    static func fetchablePoster(_ raw: String, base: String) -> URL? {
+        guard let url = posterURL(raw, base: base), !url.path.isEmpty else { return nil }
+        return url
     }
     static func matches(_ cookie: HTTPCookie, url: URL, now: Date = Date()) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
