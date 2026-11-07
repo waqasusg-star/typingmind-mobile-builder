@@ -6,10 +6,18 @@ import WidgetKit
 // Compiled into the app target only. Responsibilities:
 //   1. build a sanitised, display-only snapshot from the app's existing stores
 //   2. write it to the App Group container when that container exists
-//   3. stage it for the extension through the registered handoff link when it does not
+//   3. mirror it into the extension's own tier when the App Group is unavailable
 //   4. ask WidgetKit to reload the timelines
 //
 // The API key is never copied here: SettingsStore reads it from the Keychain for network calls only.
+//
+// 1.0.7 fixes two reasons the widget said "No key" / "No API key saved":
+//   * the payload never carried `appearance`, so the extension always drew the default theme and
+//     design even after Widget Studio saved a choice;
+//   * when the App Group container was missing, the app only reported groupUnavailable and wrote
+//     nothing, so the extension kept its own stale seed with `hasAPIKey: false` forever.
+// The bridge now carries the appearance, marks the key state as known, and writes the extension tier
+// directly when the group container is not available.
 
 enum WidgetBridge {
 
@@ -33,13 +41,14 @@ enum WidgetBridge {
                        offPeakDiscountPercent: model.clampedDiscount)
         }
 
-        return WidgetSnapshotPayload(schemaVersion: WidgetShared.schemaVersion,
-                                     writtenAt: now,
-                                     balanceFetchedAt: fetchedAt,
-                                     balance: balance,
-                                     schedule: store.schedule,
-                                     models: rates,
-                                     hasAPIKey: store.hasAPIKey)
+        return WidgetSnapshotPayload.make(writtenAt: now,
+                                          balanceFetchedAt: fetchedAt,
+                                          balance: balance,
+                                          schedule: store.schedule,
+                                          models: rates,
+                                          hasAPIKey: store.hasAPIKey,
+                                          hasAPIKeyKnown: true,
+                                          appearance: store.widgetAppearance.normalised())
     }
 
     /// Result of an attempted write, surfaced in Widget Studio so the state is never guessed.
@@ -64,9 +73,9 @@ enum WidgetBridge {
             case .written(let url):
                 return "Shared snapshot written to " + url.lastPathComponent + "."
             case .stagedForExtension:
-                return "App Group is unavailable, so the snapshot stays in a form the widget can pick up from its own copy."
+                return "The App Group is unavailable, so the snapshot was written into the widget extension's own copy."
             case .groupUnavailable:
-                return "The snapshot could not be shared: no writable location. Open a Pulse widget once so it can start from the built-in schedule."
+                return "The snapshot could not be written: no writable location was available."
             case .encodingFailed:
                 return "Snapshot could not be encoded."
             case .secretRejected:
@@ -94,6 +103,12 @@ enum WidgetBridge {
     }
 
     /// Encodes and writes the payload atomically. Never throws into the caller.
+    ///
+    /// The App Group is tried first. Writing the group file additionally mirrors the payload into the
+    /// extension's own tier, because a signer that grants the group to one bundle only would otherwise
+    /// leave the widget reading a stale local copy. When the group is unavailable the local tier is
+    /// written directly, which is what makes the balance and the theme reach the widget on builds that
+    /// were signed without an App Group at all.
     @discardableResult
     static func write(store: SettingsStore, now: Date = Date()) -> WriteResult {
         write(payload: makePayload(store: store, now: now))
@@ -106,15 +121,28 @@ enum WidgetBridge {
         guard !WidgetCacheCodec.containsSecretMaterial(data) else {
             return .secretRejected
         }
-        guard let fileURL = WidgetCacheLocation.shared.fileURL else {
-            return .groupUnavailable
+
+        let location = WidgetCacheLocation.shared
+        if let fileURL = location.fileURL {
+            do {
+                try data.write(to: fileURL, options: [.atomic])
+                // Keep the extension tier in step as well; a mismatch between the two is the state
+                // that produced a widget showing older numbers than the app.
+                WidgetSnapshotStore.write(payload: payload, to: .extensionLocal, location: location)
+                return .written(fileURL)
+            } catch {
+                // Fall through to the extension tier rather than giving up.
+                if WidgetSnapshotStore.write(payload: payload, to: .extensionLocal, location: location) != nil {
+                    return .stagedForExtension
+                }
+                return .ioFailure(error.localizedDescription)
+            }
         }
-        do {
-            try data.write(to: fileURL, options: [.atomic])
-            return .written(fileURL)
-        } catch {
-            return .ioFailure(error.localizedDescription)
+
+        if WidgetSnapshotStore.write(payload: payload, to: .extensionLocal, location: location) != nil {
+            return .stagedForExtension
         }
+        return .groupUnavailable
     }
 
     /// Writes the snapshot then asks iOS to refresh the widget. Timings are iOS-controlled.
@@ -122,9 +150,6 @@ enum WidgetBridge {
     static func refresh(store: SettingsStore, now: Date = Date()) -> WriteResult {
         let result = write(store: store, now: now)
         if result.isWritten {
-            reloadWidgets()
-        } else if result == .groupUnavailable {
-            // Nothing shareable yet: still ask iOS to redraw, the extension seeds its own copy.
             reloadWidgets()
         }
         return result

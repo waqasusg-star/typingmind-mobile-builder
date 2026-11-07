@@ -112,6 +112,8 @@ final class SettingsStore {
         KeyStore.load() ?? ""
     }
 
+    /// True when a key is stored. Re-read from the Keychain every time, so removing the key in
+    /// Settings or a failed write is reflected everywhere immediately.
     var hasAPIKey: Bool {
         !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -126,13 +128,20 @@ final class SettingsStore {
 
     /// Stores the key and reports exactly what happened.
     ///
-    /// On a failed keychain write the previous key, cached balance and generation are left
-    /// untouched, so the caller can never report "saved" for a key that is not actually stored.
+    /// 1.0.7 normalises through KeyChange.normalise (whitespace and newlines are stripped) before the
+    /// non-destructive KeyStore.save, and never returns .saved unless the value can be read back.
+    /// A failed write leaves the previous key, the cached balance and the generation untouched.
     func replaceAPIKey(_ newKey: String) -> KeySaveResult {
         let previousKey = KeyStore.load()
         let change = KeyChange.compare(previous: previousKey, next: newKey)
         let trimmed = KeyChange.normalise(newKey)
         guard KeyStore.save(trimmed) else {
+            return .storeFailed
+        }
+        // Trust the read-back rather than the write status alone: a key that cannot be read is not
+        // saved, and reporting it as saved is what leaves the app claiming an account it cannot use.
+        let stored = KeyStore.load() ?? ""
+        guard KeyChange.normalise(stored) == trimmed else {
             return .storeFailed
         }
         let result = KeySaveResult.saved(change)

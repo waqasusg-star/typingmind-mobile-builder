@@ -8,7 +8,7 @@
   "version": "1.0.7",
   "build_number": "8",
   "minimum_ios": "15.0",
-  "description": "1.0.7 (build 8): redesigned Lock Screen widget views; theme-aware shared widget components.",
+  "description": "1.0.7 (build 8): app-wide theme background, appearance routed into widget payloads, reliable API key save.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
