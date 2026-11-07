@@ -8,7 +8,7 @@
   "version": "1.0.6",
   "build_number": "7",
   "minimum_ios": "15.0",
-  "description": "DeepSeek Pulse 1.0.6: appearance and balance inside the widget payload",
+  "description": "DeepSeek Pulse 1.0.6: theme-aware app colours",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
