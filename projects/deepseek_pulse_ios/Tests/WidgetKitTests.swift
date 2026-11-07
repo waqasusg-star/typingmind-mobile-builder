@@ -115,7 +115,7 @@ func widgetKitChecks() throws {
     // MARK: Honest state labels
 
     try expect(WidgetDataState.groupUnavailable.isUsable == false, "group unavailable is not usable")
-    try expect(WidgetDataState.groupUnavailable.explainer.contains("App Group"), "group state explains the entitlement")
+    try expect(WidgetDataState.groupUnavailable.explainer.contains("Open DeepSeek Pulse"), "group state tells the user to open the app, not to reinstall")
     try expect(WidgetSnapshotEnvelope.failed(.groupUnavailable).balanceLine() == "--", "unavailable shows a placeholder")
     try expect(WidgetDataState.fresh.shortLabel == "UPDATED", "fresh badge says UPDATED, not LIVE")
     try expect(WidgetDataState.stale.shortLabel == "CACHED", "stale badge says CACHED")
