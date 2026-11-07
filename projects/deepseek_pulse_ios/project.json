@@ -8,7 +8,7 @@
   "version": "1.0.6",
   "build_number": "7",
   "minimum_ios": "15.0",
-  "description": "DeepSeek Pulse 1.0.6: widget timeline entries carry balance, peak time and switch clock",
+  "description": "DeepSeek Pulse 1.0.6: persist the chosen theme and widget design",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
