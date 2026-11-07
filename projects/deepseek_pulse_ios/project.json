@@ -8,7 +8,7 @@
   "version": "1.0.7",
   "build_number": "8",
   "minimum_ios": "15.0",
-  "description": "1.0.7 (build 8): app-wide theme background, appearance routed into widget payloads, reliable API key save.",
+  "description": "1.0.7 (build 8): app applies the saved theme at launch; dashboard exposes Themes and repaints on change.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"

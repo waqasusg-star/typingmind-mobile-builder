@@ -37,6 +37,9 @@ final class DashboardViewController: UIViewController {
         UIAction(title: "Settings", image: UIImage(systemName: "gearshape")) { [weak self] _ in
             self?.settingsTapped()
         },
+        UIAction(title: "Themes", image: UIImage(systemName: "paintpalette")) { [weak self] _ in
+            self?.themesTapped()
+        },
         UIAction(title: "Widgets & Live Activity", image: UIImage(systemName: "square.grid.2x2")) { [weak self] _ in
             self?.widgetStudioTapped()
         }
@@ -52,10 +55,16 @@ final class DashboardViewController: UIViewController {
                                                selector: #selector(settingsChanged),
                                                name: .deepSeekSettingsChanged,
                                                object: nil)
+        // 1.0.7: without this the app never repainted after a theme was applied.
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(appearanceChanged),
+                                               name: .deepSeekAppearanceChanged,
+                                               object: nil)
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        applyTheme()
         startClock()
         render()
         autoRefreshIfStale()
@@ -97,9 +106,11 @@ final class DashboardViewController: UIViewController {
         messageCard.content.addArrangedSubview(messageLabel)
         contentStack.addArrangedSubview(messageCard)
 
-        // Settings and Widgets as always-visible buttons: the previous bar-button menu could not be
-        // reached on a signed build, which left Settings impossible to open.
+        // Settings, Themes, Widgets as always-visible buttons: the previous bar-button menu could not
+        // be reached on a signed build, which left Settings impossible to open. 1.0.7 adds Themes to
+        // the same row so the sixteen palettes are reachable in one tap.
         actionsBar.onSettings = { [weak self] in self?.settingsTapped() }
+        actionsBar.onThemes = { [weak self] in self?.themesTapped() }
         actionsBar.onWidgets = { [weak self] in self?.widgetStudioTapped() }
         contentStack.addArrangedSubview(actionsBar)
 
@@ -395,20 +406,68 @@ final class DashboardViewController: UIViewController {
         return row
     }
 
+    // MARK: - Theme
+
+    /// Repaints this screen and its navigation bar from the saved palette.
+    private func applyTheme() {
+        let appearance = AppAppearance.current
+        view.backgroundColor = appearance.background
+        window?.backgroundColor = appearance.background
+        window?.overrideUserInterfaceStyle = appearance.interfaceStyle
+        if let navigation = navigationController {
+            AppThemeRefresh.styleNavigationBar(navigation.navigationBar, appearance: appearance)
+        }
+        actionsBar.refreshColours()
+        lastRateSignature = ""
+    }
+
+    @objc private func appearanceChanged() {
+        applyTheme()
+        render()
+    }
+
     // MARK: - Actions
 
     @objc private func refreshTapped() {
         refresh()
     }
 
+    /// Called by AppDelegate when the widget deep link asks for a balance refresh.
+    func refreshIfAskedByWidget(_ url: URL) {
+        guard WidgetRefreshHandoff.wantsRefresh(url) else { return }
+        refresh()
+    }
+
+    @objc private func themesTapped() {
+        presentThemeStudio()
+    }
+
+    private func presentThemeStudio() {
+        let studio = ThemeStudioViewController(initial: SettingsStore.shared.widgetAppearance)
+        studio.onApplied = { [weak self] in
+            guard let self = self else { return }
+            self.applyTheme()
+            self.render()
+        }
+        let navigation = UINavigationController(rootViewController: studio)
+        navigation.modalPresentationStyle = .formSheet
+        AppThemeRefresh.styleNavigationBar(navigation.navigationBar, appearance: AppAppearance.current)
+        present(navigation, animated: true)
+    }
+
     @objc private func widgetStudioTapped() {
         let studio = WidgetStudioViewController()
         studio.onRequestRefresh = { [weak self] in
             self?.lastRateSignature = ""
+            self?.applyTheme()
             self?.render()
+        }
+        studio.onRequestThemes = { [weak self] in
+            self?.presentThemeStudio()
         }
         let navigation = UINavigationController(rootViewController: studio)
         navigation.modalPresentationStyle = .formSheet
+        AppThemeRefresh.styleNavigationBar(navigation.navigationBar, appearance: AppAppearance.current)
         present(navigation, animated: true)
     }
 
@@ -417,11 +476,13 @@ final class DashboardViewController: UIViewController {
         controller.onSaved = { [weak self] in
             guard let self = self else { return }
             self.lastRateSignature = ""
+            self.applyTheme()
             self.render()
             self.refresh()
         }
         let navigation = UINavigationController(rootViewController: controller)
         navigation.modalPresentationStyle = .formSheet
+        AppThemeRefresh.styleNavigationBar(navigation.navigationBar, appearance: AppAppearance.current)
         present(navigation, animated: true)
     }
 
@@ -492,6 +553,9 @@ final class DashboardViewController: UIViewController {
                 WidgetBridge.refresh(store: SettingsStore.shared)
                 self.showMessage(nil, tone: .neutral)
             case .failure(let error):
+                // Even a failed fetch rewrites the snapshot, so the widget learns that a key IS
+                // present and stops claiming there is none.
+                WidgetBridge.refresh(store: SettingsStore.shared)
                 self.showMessage(error.message, tone: .warning)
             }
             self.render()
