@@ -10,12 +10,10 @@ import WidgetKit
 
 enum PulseWidgetHandshake {
 
-    /// Records a request to refresh, if the cooldown allows one.
-    ///
-    /// - Returns: the reason that was recorded, or nil when nothing was written.
+    /// Writes the request the timeline provider left for the app. Diagnostics only: the provider already
+    /// records requests, so this just guarantees one exists while the studio is open.
     @discardableResult
     static func requestRefresh(reason: WidgetRefreshReason, at date: Date = Date()) -> WidgetRefreshReason? {
-        let ledger = WidgetRefreshLedger.read()
         let request = WidgetRefreshRequest(requestedAt: date, reason: reason)
         guard WidgetRefreshStore.writeRequest(request) else { return nil }
         return request.typedReason
