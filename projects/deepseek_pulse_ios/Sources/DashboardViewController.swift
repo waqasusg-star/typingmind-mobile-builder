@@ -541,7 +541,8 @@ final class DashboardViewController: UIViewController {
     /// Answers a pending widget request after the balance load settles: clears the request, writes the
     /// answer stamp and asks WidgetKit for a fresh entry.
     private func completeWidgetRequest() {
-        WidgetHandshakeConsumer.completeRequest(previousCount: WidgetHandshakeConsumer.lastAnswer()?.answeredCount ?? 0)
+        let previous = WidgetHandshakeConsumer.lastAnswer()?.answeredCount ?? 0
+        WidgetHandshakeConsumer.completeRequest(previousCount: previous)
         WidgetBridge.reloadWidgets()
     }
 
