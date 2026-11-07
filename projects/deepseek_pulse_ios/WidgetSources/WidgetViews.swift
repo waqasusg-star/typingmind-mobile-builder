@@ -4,9 +4,12 @@ import SwiftUI
 
 // DeepSeek Pulse — the WidgetKit entry point.
 //
-// Chooses one of the ten designs from the appearance stored in the payload, applies the theme
-// gradient, and attaches the deep link. A design that does not belong to the rendered family falls
-// back to that family's default, so a stale or hand-edited payload cannot produce a blank widget.
+// It picks the design saved in Widget Studio for the current widget family, resolves the theme, and
+// hands everything to that design's view. A saved design that does not belong to the family falls
+// back to the family default, so a stale payload cannot produce an empty widget.
+//
+// The Lock Screen accessory families keep their own compact views: iOS draws those in its own
+// monochrome style, so a colour theme does not apply there.
 
 struct WidgetEntryView: View {
     var entry: PulseEntry
@@ -21,9 +24,11 @@ struct WidgetEntryView: View {
         case .systemSmall:
             let requested = appearance.smallDesign
             return WidgetDesign.smallFamily.contains(requested) ? requested : .aurora
-        default:
+        case .systemMedium:
             let requested = appearance.mediumDesign
             return WidgetDesign.mediumFamily.contains(requested) ? requested : .dashboard
+        default:
+            return .dashboard
         }
     }
 
