@@ -619,4 +619,13 @@ final class DashboardViewController: UIViewController {
         }
         messageCard.isHidden = false
     }
+
+    /// Answers a pending widget request after a balance load settles: clears the widget's request file,
+    /// writes the answer stamp and asks WidgetKit for a fresh entry. Rate limiting lives in
+    /// WidgetRefreshHandshakeRules, so this can be called from every path that finishes a load.
+    private func completeWidgetRequest() {
+        let previous = WidgetHandshakeConsumer.lastAnswer()?.answeredCount ?? 0
+        WidgetHandshakeConsumer.completeRequest(previousCount: previous)
+        WidgetBridge.reloadWidgets()
+    }
 }
