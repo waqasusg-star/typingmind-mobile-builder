@@ -119,59 +119,12 @@ struct WidgetEntryView: View {
     }
 }
 
-// MARK: - Lock Screen accessories (iOS 16+ only)
+// MARK: - Old accessory views removed in 1.0.9
 //
-// iOS renders these in its own vibrant, monochrome material. They therefore use primary / secondary
-// foreground styles, a single accent for the ring, and no palette colours: a themed gradient here
-// would be flattened by the system and would only look muddy.
-
-/// One line beside the Lock Screen clock.
-@available(iOSApplicationExtension 16.0, *)
-struct PulseInlineView: View {
-    var entry: PulseEntry
-
-    var body: some View {
-        if let target = entry.nextSwitchAt, target > entry.date {
-            // A view that contains a timer Text is never redrawn by WidgetKit mid-interval, so the
-            // seconds keep ticking on their own.
-            (Text(entry.headline).fontWeight(.bold)
-                + Text("  \u{00b7}  ")
-                + Text(target, style: .timer))
-        } else {
-            (Text(entry.headline).fontWeight(.bold)
-                + Text("  ")
-                + Text(entry.countdownText))
-        }
-    }
-}
-
-/// The ring beside the clock.
-@available(iOSApplicationExtension 16.0, *)
-struct PulseCircularView: View {
-    var entry: PulseEntry
-
-    var body: some View {
-        Gauge(value: entry.peakProgress) {
-            // The Gauge label is only read by VoiceOver; the visible centre is the state word.
-            Text("Peak share of the day")
-        } currentValueLabel: {
-            VStack(spacing: -1) {
-                Text(entry.shortStateWord)
-                    .font(.system(size: 11, weight: .heavy, design: .rounded))
-                    .minimumScaleFactor(0.5)
-                    .lineLimit(1)
-                Text(entry.peakLeftText)
-                    .font(.system(size: 8, weight: .semibold, design: .rounded))
-                    .minimumScaleFactor(0.5)
-                    .lineLimit(1)
-            }
-        }
-        .gaugeStyle(.accessoryCircular)
-        .tint(PulseGaugeTint.tint(entry: entry))
-        .privacySensitiveIfAvailable()
-        .accessibilityLabel(entry.headline + ", " + entry.peakLeftText + " of peak left today")
-    }
-}
+// PulseInlineView, PulseCircularView, PulseRectangularView and PulseGaugeTint used to live below this
+// line. The redesigned Lock Screen lives in WidgetLockScreenViews.swift and
+// WidgetLockScreenDialViews.swift, and keeping both copies would duplicate the type names in one
+// target. Nothing else referenced the old views.
 
 /// The wide card below the clock.
 @available(iOSApplicationExtension 16.0, *)
