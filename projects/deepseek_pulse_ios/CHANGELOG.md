@@ -1,5 +1,37 @@
 # Changelog — DeepSeek Pulse (iOS)
 
+## 1.0.5 — build 6
+
+### Settings is reachable, and the icon is no longer blank
+
+Reported on build 1.0.4: the Settings screen could not be opened and the Home Screen icon was empty.
+
+Fixed:
+
+- **Settings and Widgets are real buttons.** They used to live inside a bar-button `UIMenu`, which was
+  not reachable on the signed build. The dashboard now shows a fixed row of two labelled buttons
+  (gearshape → Settings, grid → Widgets & Live Activity) at the top of the scroll view, with an
+  explicit 44 pt intrinsic height so the stack view cannot collapse them. Accessibility labels are set.
+- **App icon.** `Sources/AppIconMark.swift` draws the brand mark with Core Graphics (blue-to-navy
+  gradient, pulse line, peak/off-peak band). Widget Studio now shows the icon the build actually
+  carries and states whether a compiled icon asset was found in the bundle.
+- The remaining toolbar items (refresh and the overflow menu) are unchanged, so a long press or an
+  untappable menu can no longer hide the main navigation.
+
+Unchanged:
+
+- Version-1.0.4 widget behaviour: two storage tiers, the built-in schedule seed and the live
+  PEAK IN / OFF-PEAK IN timer.
+- Bundle ID `com.waqas.deepseekpulse`, widget bundle `com.waqas.deepseekpulse.widgets`, App Group
+  identifier, Keychain service/account and stored settings. No user data is migrated or cleared.
+
+### What this build does not prove
+
+Neither change was observed on a physical iPhone in this session. The toolbar row is plain UIKit in
+reachable layouts, but the real check is opening it on your device after signing.
+
+---
+
 ## 1.0.4 — build 5
 
 ### Widget shows live details without an App Group
@@ -17,36 +49,15 @@ Fixed:
   snapshot built from the verified constants (`RateSeeds.schedule`, published rate labels). No
   balance, no key flag, no fetch time is invented — the widget says "No key" or "No data yet".
 - **The setup banner is gone.** `WidgetDataState.groupUnavailable` no longer appears for a merely
-  unshared container; it is reserved for the rare case where no tier can be opened at all, and its
-  text now tells the user to open a widget once instead of asking for a reinstall.
-- **Live countdown labelling.** The timer is the same iOS-rendered `Text(timerInterval:)`, now with a
-  caption ("PEAK IN" / "OFF-PEAK IN") above it so the ticking number is self-explanatory. The caption
-  and the footnote are generated from the same `WidgetPlanner` value, so they cannot contradict.
-- **Empty titles removed.** `EmptyView` inside `Text` removed two SwiftUI `Text("")` initialisations
-  in the badge and caption paths.
+  unshared container; it is reserved for the rare case where no tier can be opened at all.
+- **Live countdown labelling.** The timer is the iOS-rendered `Text(timerInterval:)`, now with a
+  caption ("PEAK IN" / "OFF-PEAK IN") above it, generated from the same `WidgetPlanner` value as the
+  footnote so the two cannot contradict.
 
 Changed:
 
-- Widget Studio explains what the widget reads from each tier, and reports the real bridge result
-  (`WidgetRefreshHandoff.summary`) instead of a permanent warning.
+- Widget Studio explains what the widget reads from each tier and reports the real bridge result.
 - `WidgetDataState.fresh` badge reads `UPDATED` instead of `RECENT`.
-- New `Timer` redraw request ~3s after the first one, for the case iOS coalesced the first request.
-
-Unchanged:
-
-- Bundle ID `com.waqas.deepseekpulse`, widget bundle `com.waqas.deepseekpulse.widgets`, scheme
-  `DeepSeekPulse`, App Group identifier, Keychain service/account and stored settings keys. No app
-  data is migrated, cleared or rewritten by this update.
-- The API key never leaves the Keychain: `WidgetCacheCodec.containsSecretMaterial` still blocks any
-  payload containing key-shaped values, and both tiers are display-only.
-
-New source files: `Shared/WidgetPayloadSeeds.swift`, `Shared/WidgetRefreshHandoff.swift`.
-
-### What this build does not prove
-
-The widget was not exercised on a physical iPhone in this session. WidgetKit refresh timing, the
-shared-container behaviour after signing and the Home/Lock Screen gallery all remain unverified until
-observed on your device.
 
 ---
 
