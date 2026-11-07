@@ -28,6 +28,8 @@ final class DashboardViewController: UIViewController {
     private var timer: Timer?
     private var isLoading = false
     private var lastRateSignature = ""
+    /// True while a balance load is answering a request that came from the widget.
+    private var pendingWidgetAnswer = false
 
     private lazy var refreshItem = UIBarButtonItem(image: UIImage(systemName: "arrow.clockwise"),
                                                    style: .plain,
@@ -503,17 +505,32 @@ final class DashboardViewController: UIViewController {
 
     private func autoRefreshIfStale() {
         let store = SettingsStore.shared
+        // 1.0.9: a widget tap arrives here too. The request is answered either way, so the widget
+        // stops asking and shows the honest "Open app" wording instead of a permanent key error.
+        let widgetAsked = WidgetHandshakeConsumer.pendingReason() != nil
         guard store.hasAPIKey else {
-            showMessage("Add your DeepSeek API key in Settings to load your account balance.", tone: .neutral)
+            if widgetAsked {
+                completeWidgetRequest()
+                showMessage("The widget asked for a refresh, but no API key is saved yet. Add your key in Settings.", tone: .neutral)
+            } else {
+                showMessage("Add your DeepSeek API key in Settings to load your account balance.", tone: .neutral)
+            }
             return
         }
         if let snapshot = store.cachedSnapshot {
-            if Date().timeIntervalSince(snapshot.fetchedAt) < 120 {
+            if Date().timeIntervalSince(snapshot.fetchedAt) < 120 && !widgetAsked {
                 showMessage(nil, tone: .neutral)
                 return
             }
         }
         refresh()
+    }
+
+    /// Answers a pending widget request after the balance load settles: clears the request, writes the
+    /// answer stamp and asks WidgetKit for a fresh entry.
+    private func completeWidgetRequest() {
+        WidgetHandshakeConsumer.completeRequest(previousCount: WidgetHandshakeConsumer.lastAnswer()?.answeredCount ?? 0)
+        WidgetBridge.reloadWidgets()
     }
 
     private func refresh() {
@@ -523,6 +540,11 @@ final class DashboardViewController: UIViewController {
             showMessage("Add your DeepSeek API key in Settings to load your account balance.", tone: .neutral)
             refreshControl.endRefreshing()
             return
+        }
+
+        if WidgetHandshakeConsumer.pendingReason() != nil {
+            // Consume the request once the response lands, so the widget cannot re-ask in a loop.
+            pendingWidgetAnswer = true
         }
 
         isLoading = true
