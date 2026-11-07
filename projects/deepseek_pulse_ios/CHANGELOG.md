@@ -1,5 +1,75 @@
 # Changelog — DeepSeek Pulse (iOS)
 
+## 1.0.8 — build 9
+
+### The Home Screen icon is now a compiled asset
+
+Reported on 1.0.7: the icon shown in Widget Studio was a Core Graphics drawing, and the Home Screen
+icon slot was still empty after installing a signed build.
+
+Fixed:
+
+- **Real compiled AppIcon.** The project now builds through the `generated_v1` icon profile, which
+  produces one opaque 1024x1024 master plus the 18 iPhone/iPad slots inside a compiled `Assets.car`,
+  and the CI step verifies the icon keys, the PNGs and the `CFBundleIcons` entries in the actual
+  archive and IPA. `Resources/AppIcon.json` supplies the brand colours: background `#153E75`,
+  foreground `#FFFFFF`, the `pulse` symbol and the `DP` initials.
+- `Sources/AppIconArtwork.swift` and `Sources/AppIconMark.swift` are **unchanged and both kept**. They
+  are two different things: `AppIconArtwork` draws the in-app preview and the Home Screen shortcut
+  artwork, `AppIconMark` draws the vector brand mark. Neither one is the compiled icon, so neither one
+  is a substitute for the asset catalogue.
+
+### The widget stops accusing the account of having no key
+
+Fixed:
+
+- **The key state is now carried across a reseed.** The extension rewrites its own schedule-only
+  snapshot whenever no readable payload exists, and that rewrite used to drop the "key state is
+  known" flag. A snapshot that had positively reported "no key" therefore degraded to "unknown" on
+  the next seed, and the owner of a keyless account never saw the actionable wording. `builtIn(...)`
+  now accepts the known flag, and `PulseWidgetLocalStore.refresh` passes through whatever the last
+  snapshot recorded.
+- All widget surfaces keep routing their account wording through `PulseBalanceWording`, so a widget
+  distinguishes, separately: a saved key with no balance yet ("Load in app"), a positively missing key
+  ("Add API key"), a real balance with its age ("Updated 4m ago" / "Saved 2h ago"), and an unreadable
+  or incompatible snapshot (its own explainer). The Lock Screen families still show no balance at all,
+  because that slot is too small to explain an account.
+- The API key continues to live only in the app's Keychain. The payload still has no field that could
+  carry it, and the secret scan still runs before every write.
+
+### Themes and tests
+
+- The palette catalogue and the ten widget designs are unchanged in behaviour. The executed widget
+  suite now proves the catalogue itself: at least ten themes, unique ids, every channel displayable,
+  every ramp displayable in all three pricing states, every id resolving to its own name instead of
+  the fallback, ten designs with unique codes, and a saved appearance (theme, both designs and the
+  display switches) surviving an encode/decode round trip.
+- Two seed assertions were corrected. They previously asserted the literal string "No key" for a
+  snapshot with no account data at all, which contradicts the honesty rule the views follow. They now
+  assert the placeholder balance, the absence of invented account data, and the exact wording each
+  real key state produces.
+
+Unchanged:
+
+- Bundle ID `com.waqas.deepseekpulse`, widget bundle `com.waqas.deepseekpulse.widgets`, App Group
+  `group.com.waqas.deepseekpulse`, Keychain service/account and every stored setting. No user data is
+  migrated, cleared or reformatted.
+- The two storage tiers, the built-in schedule seed, the live `Text(timerInterval:)` countdown, the
+  deep-link refresh route and the Settings save path.
+
+### What this build does not prove
+
+- The IPA is **unsigned**. Both the app and the widget extension must be signed with the same team
+  and with profiles that both authorise `group.com.waqas.deepseekpulse`; until that happens the
+  extension cannot read the shared container, and the widget runs on its own local tier.
+- Nothing here was observed on a physical iPhone: the Home Screen icon placement, the Lock Screen
+  widget rendering, App Group runtime access and live `api.deepseek.com` balance calls remain
+  unverified until you install the signed build and look.
+- WidgetKit decides when a timeline is actually reloaded. The app can request a reload and clear the
+  saved balance immediately; it cannot make iOS redraw sooner than iOS chooses.
+
+---
+
 ## 1.0.5 — build 6
 
 ### Settings is reachable, and the icon is no longer blank

@@ -8,7 +8,7 @@
   "version": "1.0.8",
   "build_number": "9",
   "minimum_ios": "15.0",
-  "description": "1.0.7 (build 8): Settings save path with Keychain-verified key storage.",
+  "description": "1.0.8 (build 9): compiled Home Screen AppIcon, honest widget key-state wording, theme coverage tests.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
