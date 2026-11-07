@@ -256,27 +256,36 @@ struct PulseStat: View {
 extension View {
     /// Pre-iOS 17 background for Home Screen widget containers.
     func pulseBackground(mood: PulseMood, state: PricingState, overlay: Double) -> some View {
-        self.background(
-            ZStack {
-                mood.gradient(for: state)
-                if overlay > 0 { Color.black.opacity(overlay) }
-            }
-        )
+        self.background(PulseWidgetBackdrop(mood: mood,
+                                           state: state,
+                                           artwork: "gradient",
+                                           overlay: overlay))
+    }
+
+    /// 1.0.9: the themed background, including the artwork layer chosen in Widget Studio.
+    func pulseThemedBackground(mood: PulseMood, state: PricingState, artwork: String, overlay: Double) -> some View {
+        self.background(PulseWidgetBackdrop(mood: mood, state: state, artwork: artwork, overlay: overlay))
     }
 
     /// iOS 17+ wants the container background declared through the modifier; without it the gallery
     /// shows an "adopt container background" placeholder instead of the widget.
     @ViewBuilder
     func containerBackgroundPulse(mood: PulseMood, state: PricingState, overlay: Double) -> some View {
+        containerBackgroundPulse(mood: mood, state: state, artwork: "gradient", overlay: overlay)
+    }
+
+    /// 1.0.9: themed container background, with the artwork layer.
+    @ViewBuilder
+    func containerBackgroundPulse(mood: PulseMood,
+                                  state: PricingState,
+                                  artwork: String,
+                                  overlay: Double) -> some View {
         if #available(iOSApplicationExtension 17.0, *) {
             self.containerBackground(for: .widget) {
-                ZStack {
-                    mood.gradient(for: state)
-                    if overlay > 0 { Color.black.opacity(overlay) }
-                }
+                PulseWidgetBackdrop(mood: mood, state: state, artwork: artwork, overlay: overlay)
             }
         } else {
-            self.pulseBackground(mood: mood, state: state, overlay: overlay)
+            self.pulseThemedBackground(mood: mood, state: state, artwork: artwork, overlay: overlay)
         }
     }
 
