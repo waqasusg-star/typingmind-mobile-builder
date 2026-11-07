@@ -1,26 +1,37 @@
 import UIKit
 
+// DeepSeek Pulse — the Settings screen, split into two source files.
+//
+// This file holds everything that needs the view hierarchy (the form, its validation helpers and the
+// action handlers). Sources/SettingsActions.swift holds the save path, which is the largest and most
+// delicate piece: it validates the schedule, the holiday range and every rate before writing, and it
+// aborts the whole save when the Keychain refuses the key.
+//
+// 1.0.7 adds the Theme and widget design card at the top of the form, which is the entry point for
+// the sixteen palettes that 1.0.6 shipped without any picker.
+
 final class SettingsViewController: UIViewController {
 
-    private let scrollView = UIScrollView()
-    private let stack = UIStackView()
-    private let keyField = PaddedTextField(frame: .zero)
-    private let scheduleSwitch = UISwitch()
-    private let coverageStartField = PaddedTextField(frame: .zero)
-    private let coverageEndField = PaddedTextField(frame: .zero)
-    private let holidayDatePicker = UIDatePicker()
-    private let holidayListStack = UIStackView()
-    private let holidayNoteLabel = Labels.caption("")
-    private let localNoteLabel = Labels.caption("")
+    let scrollView = UIScrollView()
+    let stack = UIStackView()
+    let keyField = PaddedTextField(frame: .zero)
+    let scheduleSwitch = UISwitch()
+    let coverageStartField = PaddedTextField(frame: .zero)
+    let coverageEndField = PaddedTextField(frame: .zero)
+    let holidayDatePicker = UIDatePicker()
+    let holidayListStack = UIStackView()
+    let holidayNoteLabel = Labels.caption("")
+    let localNoteLabel = Labels.caption("")
+    let appearanceSummary = Labels.caption("")
 
-    private var dayButtons: [UIButton] = []
-    private var windowFields: [[PaddedTextField]] = []
-    private var rateFields: [String: [RateComponent: PaddedTextField]] = [:]
-    private var discountFields: [String: PaddedTextField] = [:]
+    var dayButtons: [UIButton] = []
+    var windowFields: [[PaddedTextField]] = []
+    var rateFields: [String: [RateComponent: PaddedTextField]] = [:]
+    var discountFields: [String: PaddedTextField] = [:]
 
-    private var peakDays: Set<Int> = []
-    private var holidays: Set<String> = []
-    private var holidaysExpanded = false
+    var peakDays: Set<Int> = []
+    var holidays: Set<String> = []
+    var holidaysExpanded = false
 
     var onSaved: (() -> Void)?
 
@@ -41,6 +52,11 @@ final class SettingsViewController: UIViewController {
         let tap = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         tap.cancelsTouchesInView = false
         view.addGestureRecognizer(tap)
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        refreshAppearanceSummary()
     }
 
     // MARK: - Form
@@ -69,17 +85,29 @@ final class SettingsViewController: UIViewController {
         if SettingsStore.shared.migrationNoticePending {
             let migrationCard = CardView()
             migrationCard.content.addArrangedSubview(Labels.title("Upgraded from an earlier build"))
-            migrationCard.content.addArrangedSubview(Labels.caption("The old 16:30–00:30 UTC window and the retired deepseek-chat / deepseek-reasoner prices were removed. The schedule, prices and the 2026–2027 PRC holiday list now match the official sources checked on " + RateSeeds.verifiedAsOf + "."))
+            migrationCard.content.addArrangedSubview(Labels.caption("The old 16:30-00:30 UTC window and the retired deepseek-chat / deepseek-reasoner prices were removed. The schedule, prices and the 2026-2027 PRC holiday list now match the official sources checked on " + RateSeeds.verifiedAsOf + "."))
             migrationCard.content.addArrangedSubview(linkButton("Dismiss this notice", action: #selector(dismissMigrationNotice)))
             stack.addArrangedSubview(migrationCard)
         }
 
-        // API key
+        // Appearance: the entry point for the sixteen palettes.
+        let themeCard = CardView()
+        themeCard.content.addArrangedSubview(Labels.title("Theme and widget design"))
+        themeCard.content.addArrangedSubview(appearanceSummary)
+        themeCard.content.addArrangedSubview(linkButton("Choose theme and widget design", action: #selector(openThemes)))
+        stack.addArrangedSubview(themeCard)
+
+        buildKeyAndScheduleCards()
+        buildHolidayCard()
+        buildRatesCard()
+    }
+
+    private func buildKeyAndScheduleCards() {
         let keyCard = CardView()
         keyCard.content.addArrangedSubview(Labels.title("API key"))
         keyCard.content.addArrangedSubview(Labels.caption("Kept in the iOS Keychain on this device and sent only to api.deepseek.com/user/balance. Create or copy a key from platform.deepseek.com/api_keys."))
         keyField.isSecureTextEntry = true
-        keyField.placeholder = "sk-…"
+        keyField.placeholder = "sk-..."
         keyField.keyboardType = .asciiCapable
         keyField.heightAnchor.constraint(equalToConstant: 40).isActive = true
         keyCard.content.addArrangedSubview(keyField)
@@ -92,10 +120,9 @@ final class SettingsViewController: UIViewController {
         keyCard.content.addArrangedSubview(keyButtons)
         stack.addArrangedSubview(keyCard)
 
-        // Pricing schedule
         let scheduleCard = CardView()
         scheduleCard.content.addArrangedSubview(Labels.title("Pricing schedule"))
-        scheduleCard.content.addArrangedSubview(Labels.caption("Verified on " + RateSeeds.verifiedAsOf + ": peak Monday–Friday 01:00–04:00 and 06:00–10:00 UTC, excluding PRC public holidays. Every other hour, every weekend and every PRC public holiday is off-peak."))
+        scheduleCard.content.addArrangedSubview(Labels.caption("Verified on " + RateSeeds.verifiedAsOf + ": peak Monday-Friday 01:00-04:00 and 06:00-10:00 UTC, excluding PRC public holidays. Every other hour, every weekend and every PRC public holiday is off-peak."))
 
         let switchRow = UIStackView(arrangedSubviews: [bodyLabel("Apply off-peak discounts"), scheduleSwitch])
         switchRow.axis = .horizontal
@@ -141,8 +168,9 @@ final class SettingsViewController: UIViewController {
         scheduleCard.content.addArrangedSubview(localNoteLabel)
         scheduleCard.content.addArrangedSubview(linkButton("Restore official schedule and verified holidays", action: #selector(restoreOfficialSchedule)))
         stack.addArrangedSubview(scheduleCard)
+    }
 
-        // PRC holidays
+    private func buildHolidayCard() {
         let holidayCard = CardView()
         holidayCard.content.addArrangedSubview(Labels.title("PRC public holidays"))
         holidayCard.content.addArrangedSubview(Labels.caption("Verified for 2026 and 2027 from the State Council notices. The app never downloads a holiday list, so 2028 and later are reported as unverified until you add them. Chinese make-up working Saturdays and Sundays stay off-peak here, because DeepSeek charges every weekend as off-peak."))
@@ -177,8 +205,9 @@ final class SettingsViewController: UIViewController {
         holidayCard.content.addArrangedSubview(linkButton("Open the official PRC holiday notice", action: #selector(openHolidaySource)))
         holidayCard.content.addArrangedSubview(linkButton("Clear all holiday dates", action: #selector(clearHolidays)))
         stack.addArrangedSubview(holidayCard)
+    }
 
-        // Rates
+    private func buildRatesCard() {
         let ratesCard = CardView()
         ratesCard.content.addArrangedSubview(Labels.title("Standard (peak) rates"))
         ratesCard.content.addArrangedSubview(Labels.caption("USD per 1M tokens. Verified defaults: deepseek-flash 0.006 / 0.30 / 1.20 and deepseek-v4-pro 0.044 / 1.32 / 3.96, both 50% off in off-peak. Edit only if DeepSeek changed prices."))
@@ -245,6 +274,15 @@ final class SettingsViewController: UIViewController {
         refreshDayButtons()
         refreshHolidayList()
         updateLocalNote()
+        refreshAppearanceSummary()
+    }
+
+    private func refreshAppearanceSummary() {
+        let appearance = SettingsStore.shared.widgetAppearance.normalised()
+        appearanceSummary.text = "Theme " + appearance.theme.name + " of " + String(PulseThemes.count)
+            + " - small " + appearance.smallDesign.title
+            + " - medium " + appearance.mediumDesign.title
+        appearanceSummary.textColor = AppColors.textDim
     }
 
     private func refreshDayButtons() {
@@ -336,7 +374,7 @@ final class SettingsViewController: UIViewController {
         var local: [String] = []
         for interval in intervals {
             local.append(ClockFormat.localLabel(minuteUTC: interval.startMinuteUTC)
-                         + "–" + ClockFormat.localLabel(minuteUTC: interval.endMinuteUTC))
+                         + "-" + ClockFormat.localLabel(minuteUTC: interval.endMinuteUTC))
         }
         if local.isEmpty {
             localNoteLabel.text = "No valid window yet."
@@ -397,22 +435,7 @@ final class SettingsViewController: UIViewController {
         return bar
     }
 
-    private func parseMinute(_ text: String) -> Int? {
-        let parts = text.trimmingCharacters(in: .whitespaces).split(separator: ":", omittingEmptySubsequences: false)
-        guard parts.count == 2,
-              let hour = Int(parts[0]),
-              let minute = Int(parts[1]),
-              (0...23).contains(hour),
-              (0...59).contains(minute) else { return nil }
-        return hour * 60 + minute
-    }
-
-    private func parseNumber(_ text: String?) -> Double? {
-        guard let text = text else { return nil }
-        return Double(text.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: "."))
-    }
-
-    private func alert(_ title: String, _ message: String) {
+    func alert(_ title: String, _ message: String) {
         let controller = UIAlertController(title: title, message: message, preferredStyle: .alert)
         controller.addAction(UIAlertAction(title: "OK", style: .default))
         present(controller, animated: true)
@@ -426,6 +449,24 @@ final class SettingsViewController: UIViewController {
 
     @objc private func closeTapped() {
         dismiss(animated: true)
+    }
+
+    /// Opens the theme and design picker, then repaints this screen if a theme was applied.
+    @objc private func openThemes() {
+        let studio = ThemeStudioViewController(initial: SettingsStore.shared.widgetAppearance)
+        studio.onApplied = { [weak self] in
+            guard let self = self else { return }
+            self.refreshAppearanceSummary()
+            self.view.backgroundColor = AppColors.background
+            if let navigation = self.navigationController {
+                AppThemeRefresh.styleNavigationBar(navigation.navigationBar, appearance: AppAppearance.current)
+            }
+            self.onSaved?()
+        }
+        let navigation = UINavigationController(rootViewController: studio)
+        navigation.modalPresentationStyle = .formSheet
+        AppThemeRefresh.styleNavigationBar(navigation.navigationBar, appearance: AppAppearance.current)
+        present(navigation, animated: true)
     }
 
     @objc private func dismissMigrationNotice() {
@@ -517,10 +558,8 @@ final class SettingsViewController: UIViewController {
         if result.shouldClearCachedBalance {
             message += " The cached balance was cleared."
         }
-        if widgetResult == .groupUnavailable {
-            message += " The widget cannot read app data until both bundles share the App Group."
-        } else if !widgetResult.isWritten {
-            message += " The widget snapshot could not be rewritten."
+        if !widgetResult.isWritten {
+            message += " The widget snapshot could not be rewritten; open a widget once to refresh it."
         }
         alert("API key removed", message)
     }
@@ -538,135 +577,5 @@ final class SettingsViewController: UIViewController {
     @objc private func openPricingPage() {
         guard let url = URL(string: RateSeeds.sourceURL) else { return }
         UIApplication.shared.open(url)
-    }
-
-    @objc private func saveTapped() {
-        dismissKeyboard()
-        let store = SettingsStore.shared
-
-        var intervals: [PeakInterval] = []
-        for index in 0..<windowFields.count {
-            let startText = trimmed(windowFields[index][0].text)
-            let endText = trimmed(windowFields[index][1].text)
-            if startText.isEmpty && endText.isEmpty { continue }
-            guard let start = parseMinute(startText), let end = parseMinute(endText) else {
-                alert("Check window " + String(index + 1), "Enter both edges as HH:MM in 24-hour UTC, for example 01:00 and 04:00.")
-                return
-            }
-            guard start < end else {
-                alert("Check window " + String(index + 1), "The start must be earlier than the end; a window cannot cross midnight.")
-                return
-            }
-            intervals.append(PeakInterval(startMinuteUTC: start, endMinuteUTC: end))
-        }
-        if scheduleSwitch.isOn && intervals.isEmpty {
-            alert("Check the schedule", "Add at least one peak window, or switch off-peak discounts off.")
-            return
-        }
-        if scheduleSwitch.isOn && peakDays.isEmpty {
-            alert("Check the schedule", "Select at least one peak weekday, or switch off-peak discounts off.")
-            return
-        }
-
-        let coverageStart = trimmed(coverageStartField.text)
-        let coverageEnd = trimmed(coverageEndField.text)
-        if !coverageStart.isEmpty || !coverageEnd.isEmpty {
-            guard PricingSchedule.date(fromDayKey: coverageStart) != nil,
-                  PricingSchedule.date(fromDayKey: coverageEnd) != nil else {
-                alert("Check the holiday range", "Enter both range ends as yyyy-MM-dd, for example 2026-01-01 and 2027-12-31.")
-                return
-            }
-            guard coverageStart <= coverageEnd else {
-                alert("Check the holiday range", "The range start must not be later than the range end.")
-                return
-            }
-        }
-        for key in holidays {
-            if PricingSchedule.date(fromDayKey: key) == nil {
-                alert("Check the holiday dates", key + " is not a yyyy-MM-dd date.")
-                return
-            }
-        }
-
-        var models: [ModelRate] = []
-        for model in store.models {
-            var standard = model.standard
-            if let fields = rateFields[model.id] {
-                for component in RateComponent.allCases {
-                    guard let field = fields[component],
-                          let value = parseNumber(field.text),
-                          value >= 0 else {
-                        alert("Check the rates", "Enter a valid non-negative USD price for " + model.name + " — " + component.title + ".")
-                        return
-                    }
-                    if component == .cacheHit { standard.cacheHit = value }
-                    if component == .cacheMiss { standard.cacheMiss = value }
-                    if component == .output { standard.output = value }
-                }
-            }
-            guard let discountField = discountFields[model.id],
-                  let discount = parseNumber(discountField.text),
-                  discount >= 0, discount <= 100 else {
-                alert("Check the discount", "Enter the off-peak discount for " + model.name + " as a percentage between 0 and 100.")
-                return
-            }
-            models.append(ModelRate(id: model.id,
-                                    name: model.name,
-                                    label: model.label,
-                                    standard: standard,
-                                    offPeakDiscountPercent: discount))
-        }
-
-        let official = RateSeeds.schedule
-        let sortedNew = intervals.sorted { $0.startMinuteUTC < $1.startMinuteUTC }
-        let isCustom = scheduleSwitch.isOn != official.discountsEnabled
-            || peakDays != official.peakWeekdays
-            || sortedNew != official.sortedIntervals
-
-        let existing = store.schedule.holidays
-        let newStart: String? = coverageStart.isEmpty ? nil : coverageStart
-        let newEnd: String? = coverageEnd.isEmpty ? nil : coverageEnd
-        var verifiedAsOf = existing.verifiedAsOf
-        if newStart != existing.coverageStart || newEnd != existing.coverageEnd {
-            verifiedAsOf = PricingSchedule.dayKey(Date())
-        }
-        let calendar = HolidayCalendar(dates: holidays,
-                                       coverageStart: newStart,
-                                       coverageEnd: newEnd,
-                                       verifiedAsOf: verifiedAsOf,
-                                       source: existing.source)
-
-        let updatedSchedule = PricingSchedule(peakWeekdays: peakDays.isEmpty ? official.peakWeekdays : peakDays,
-                                              intervals: sortedNew,
-                                              holidays: calendar,
-                                              discountsEnabled: scheduleSwitch.isOn,
-                                              sourceURL: official.sourceURL,
-                                              verifiedAsOf: official.verifiedAsOf)
-
-        let ratesAreCustom = models != RateSeeds.models
-
-        let key = keyField.text ?? ""
-        // replaceAPIKey reports what actually happened. A keychain failure must abort the save
-        // rather than silently continuing with the previous key still in place.
-        if !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            switch store.replaceAPIKey(key) {
-            case .storeFailed:
-                alert("Keychain error", "The API key could not be stored in the iOS Keychain. Your previous key and cached balance are unchanged. Try again.")
-                return
-            case .saved:
-                break
-            }
-        }
-
-        store.saveSchedule(updatedSchedule, isCustom: isCustom)
-        store.saveModels(models, isCustom: ratesAreCustom)
-
-        // Rewrite the shared widget snapshot so the Home Screen follows schedule, rate and key
-        // changes immediately; iOS still decides when the timeline is actually redrawn.
-        WidgetBridge.refresh(store: store)
-
-        NotificationCenter.default.post(name: .deepSeekSettingsChanged, object: nil)
-        onSaved?()
-        dismiss(animated: true)
     }
 }

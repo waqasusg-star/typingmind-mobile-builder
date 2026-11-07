@@ -8,7 +8,7 @@
   "version": "1.0.7",
   "build_number": "8",
   "minimum_ios": "15.0",
-  "description": "1.0.7 (build 8): in-app widget previews follow the chosen theme and show the honest balance/key wording.",
+  "description": "1.0.7 (build 8): Settings runtime, using the theme picker entry point.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
