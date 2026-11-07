@@ -19,7 +19,7 @@ struct PulseWidget: Widget {
             WidgetEntryView(entry: entry)
         }
         .configurationDisplayName("DeepSeek Pulse")
-        .description("Peak or off-peak pricing, the countdown to the next switch and your last saved balance.")
+        .description("Peak or off-peak pricing, the countdown, your available balance and a refresh shortcut. Ten designs and sixteen themes in Widget Studio.")
         .supportedFamilies(PulseWidget.supportedFamilies())
     }
 

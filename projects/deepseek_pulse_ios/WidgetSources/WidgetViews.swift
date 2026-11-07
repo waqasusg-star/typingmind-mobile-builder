@@ -2,72 +2,42 @@ import Foundation
 import WidgetKit
 import SwiftUI
 
-// DeepSeek Pulse — real WidgetKit SwiftUI views.
+// DeepSeek Pulse — the WidgetKit entry point.
 //
-// These are WidgetKit views, not the UIKit preview cards in Sources/Widget*CardView.swift.
-// The UIKit cards stay in the app as Widget Studio previews.
-//
-// Countdowns use Text(timerInterval:) / Text(_:style:.timer), which iOS renders itself, so the
-// number keeps ticking without the app running, without extra timeline entries and without any
-// per-second network or reload work. When no switch instant is known, a static label is shown.
-
-// MARK: - Countdown
-
-/// Self-updating countdown text. Falls back to a static, honest label when there is no target.
-struct PulseCountdown: View {
-    var entry: PulseEntry
-    var size: CGFloat
-
-    var body: some View {
-        if let target = entry.nextSwitchAt, target > entry.date {
-            Text(target, style: .timer)
-                .font(.system(size: size, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.5)
-        } else {
-            Text(entry.countdownText)
-                .font(.system(size: size, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.5)
-        }
-    }
-}
-
-/// The caption above the countdown: "Off-peak in", "Peak in", or nothing.
-struct PulseCountdownCaption: View {
-    var entry: PulseEntry
-    var size: CGFloat = 9
-
-    var body: some View {
-        let label = entry.countdownLabel
-        if !label.isEmpty {
-            Text(label.uppercased())
-                .font(.system(size: size, weight: .semibold))
-                .foregroundColor(.white.opacity(0.72))
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-        }
-    }
-}
-
-// MARK: - Entry point
+// Chooses one of the ten designs from the appearance stored in the payload, applies the theme
+// gradient, and attaches the deep link. A design that does not belong to the rendered family falls
+// back to that family's default, so a stale or hand-edited payload cannot produce a blank widget.
 
 struct WidgetEntryView: View {
     var entry: PulseEntry
     @Environment(\.widgetFamily) private var family
 
+    private var appearance: WidgetAppearance { entry.envelope.appearance }
+    private var mood: PulseMood { PulseMood(appearance: appearance) }
+
+    /// The design this size should draw.
+    var design: WidgetDesign {
+        switch family {
+        case .systemSmall:
+            let requested = appearance.smallDesign
+            return WidgetDesign.smallFamily.contains(requested) ? requested : .aurora
+        default:
+            let requested = appearance.mediumDesign
+            return WidgetDesign.mediumFamily.contains(requested) ? requested : .dashboard
+        }
+    }
+
+    var state: PricingState {
+        guard let schedule = entry.envelope.schedule else { return .standard }
+        return schedule.state(at: entry.date)
+    }
+
     var body: some View {
-        // The deep link must be attached to the final root content, on every iOS branch, so tapping
-        // the widget actually opens the app with the scheme the Info.plist registers.
         Group {
             if #available(iOSApplicationExtension 16.0, *) {
-                content
-                    .containerBackgroundPulse(for: state)
+                content.containerBackgroundPulse(mood: mood, state: state, overlay: mood.rampOverlay)
             } else {
-                content
-                    .pulseBackground(state: state)
+                content.pulseBackground(mood: mood, state: state, overlay: mood.rampOverlay)
             }
         }
         .widgetURL(WidgetPolicy.deepLinkURL())
@@ -77,9 +47,9 @@ struct WidgetEntryView: View {
     private var content: some View {
         switch family {
         case .systemSmall:
-            PulseSmallView(entry: entry)
+            smallContent
         case .systemMedium:
-            PulseMediumView(entry: entry)
+            mediumContent
         default:
             if #available(iOSApplicationExtension 16.0, *) {
                 switch family {
@@ -90,113 +60,44 @@ struct WidgetEntryView: View {
                 case .accessoryRectangular:
                     PulseRectangularView(entry: entry)
                 default:
-                    PulseMediumView(entry: entry)
+                    mediumContent
                 }
             } else {
-                PulseMediumView(entry: entry)
+                mediumContent
             }
         }
     }
 
-    var state: PricingState {
-        guard let schedule = entry.envelope.schedule else { return .standard }
-        return schedule.state(at: entry.date)
-    }
-
-    /// Gradient per pricing state.
-    static func palette(for state: PricingState) -> [Color] {
-        switch state {
-        case .peak:
-            return [Color(red: 0.98, green: 0.58, blue: 0.13), Color(red: 0.32, green: 0.16, blue: 0.06)]
-        case .offPeak:
-            return [Color(red: 0.18, green: 0.72, blue: 0.50), Color(red: 0.05, green: 0.24, blue: 0.20)]
-        case .standard:
-            return [Color(red: 0.30, green: 0.42, blue: 0.99), Color(red: 0.07, green: 0.10, blue: 0.18)]
+    @ViewBuilder
+    private var smallContent: some View {
+        switch design {
+        case .vault:
+            PulseVaultView(entry: entry, mood: mood, appearance: appearance)
+        case .splitColumn:
+            PulseSplitColumnView(entry: entry, mood: mood, appearance: appearance)
+        case .ring:
+            PulseRingView(entry: entry, mood: mood, appearance: appearance)
+        case .timeline:
+            PulseTimelineView(entry: entry, mood: mood, appearance: appearance)
+        default:
+            PulseAuroraView(entry: entry, mood: mood, appearance: appearance)
         }
     }
-}
 
-// MARK: - Small (iOS 15+)
-
-struct PulseSmallView: View {
-    var entry: PulseEntry
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text("DeepSeek")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(.white.opacity(0.85))
-            Text(entry.headline)
-                .font(.system(size: 15, weight: .heavy))
-                .foregroundColor(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            PulseCountdownCaption(entry: entry)
-            PulseCountdown(entry: entry, size: 21)
-            Spacer(minLength: 0)
-            Text(entry.envelope.balanceLine())
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.white.opacity(0.92))
-                .lineLimit(1)
-            StatusBadge(envelope: entry.envelope)
+    @ViewBuilder
+    private var mediumContent: some View {
+        switch design {
+        case .ledger:
+            PulseLedgerView(entry: entry, mood: mood, appearance: appearance)
+        case .countdownHero:
+            PulseCountdownHeroView(entry: entry, mood: mood, appearance: appearance)
+        case .bandHero:
+            PulseBandHeroView(entry: entry, mood: mood, appearance: appearance)
+        case .minimal:
+            PulseMinimalView(entry: entry, mood: mood, appearance: appearance)
+        default:
+            PulseDashboardView(entry: entry, mood: mood, appearance: appearance)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-    }
-}
-
-// MARK: - Medium (iOS 15+)
-
-struct PulseMediumView: View {
-    var entry: PulseEntry
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("DEEPSEEK PULSE")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white.opacity(0.85))
-                Spacer()
-                Text(entry.headline)
-                    .font(.system(size: 11, weight: .heavy))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.white.opacity(0.18))
-                    .clipShape(Capsule())
-            }
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                VStack(alignment: .leading, spacing: 0) {
-                    PulseCountdownCaption(entry: entry)
-                    PulseCountdown(entry: entry, size: 26)
-                }
-                Spacer(minLength: 4)
-                Text(entry.envelope.balanceLine())
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.92))
-                    .lineLimit(1)
-            }
-            if let schedule = entry.envelope.schedule {
-                PulseDayBand(schedule: schedule, date: entry.date)
-                    .frame(height: 10)
-            }
-            Text(entry.footnote)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.white.opacity(0.78))
-                .lineLimit(2)
-                .minimumScaleFactor(0.8)
-            Spacer(minLength: 0)
-            HStack {
-                Text(entry.envelope.balanceCaption(now: entry.date))
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(.white.opacity(0.6))
-                    .lineLimit(1)
-                Spacer()
-                StatusBadge(envelope: entry.envelope)
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 }
 
@@ -207,7 +108,6 @@ struct PulseInlineView: View {
     var entry: PulseEntry
 
     var body: some View {
-        // Inline is a single line of text; iOS renders it in its own monochrome style.
         if let target = entry.nextSwitchAt, target > entry.date {
             Text(entry.headline) + Text(" ") + Text(target, style: .timer)
         } else {
@@ -226,7 +126,7 @@ struct PulseCircularView: View {
         } currentValueLabel: {
             // A gauge cannot host a ticking Text, so the centre shows the state word rather than a
             // frozen number that would look like a live countdown.
-            Text(entry.envelope.state.isUsable ? entry.headline : "--")
+            Text(entry.headline)
                 .font(.system(size: 9, weight: .bold))
                 .minimumScaleFactor(0.5)
         }
@@ -250,117 +150,11 @@ struct PulseRectangularView: View {
             Text(entry.headline)
                 .font(.system(size: 12, weight: .heavy))
             PulseCountdown(entry: entry, size: 17)
-            Text(entry.envelope.balanceCaption(now: entry.date))
-                .font(.system(size: 9, weight: .medium))
+            Text(entry.balanceText)
+                .font(.system(size: 10, weight: .semibold))
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .privacySensitive(true)
-    }
-}
-
-// MARK: - Shared pieces
-
-struct StatusBadge: View {
-    var envelope: WidgetSnapshotEnvelope
-
-    var body: some View {
-        if envelope.state == .fresh {
-            EmptyView()
-        } else {
-            Text(envelope.state.shortLabel)
-                .font(.system(size: 8, weight: .bold))
-                .foregroundColor(.white)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2)
-                .background(Color.black.opacity(0.35))
-                .clipShape(Capsule())
-                .privacySensitiveIfAvailable()
-        }
-    }
-}
-
-/// The 24-hour band, drawn from the same intervals the app uses.
-struct PulseDayBand: View {
-    var schedule: PricingSchedule
-    var date: Date
-
-    var body: some View {
-        GeometryReader { geometry in
-            HStack(spacing: 0) {
-                ForEach(Array(segments.enumerated()), id: \.offset) { pair in
-                    Rectangle()
-                        .fill(color(for: pair.element.state))
-                        .frame(width: width(for: pair.element, total: geometry.size.width))
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-            .overlay(alignment: .leading) {
-                Rectangle()
-                    .fill(Color.white)
-                    .frame(width: 1.5)
-                    .offset(x: nowOffset(total: geometry.size.width))
-            }
-        }
-    }
-
-    private var segments: [ScheduleSegment] {
-        schedule.segments(for: date)
-    }
-
-    private func color(for state: PricingState) -> Color {
-        switch state {
-        case .peak: return Color(red: 0.98, green: 0.58, blue: 0.13)
-        case .offPeak: return Color(red: 0.18, green: 0.72, blue: 0.50)
-        case .standard: return Color.white.opacity(0.25)
-        }
-    }
-
-    private func width(for segment: ScheduleSegment, total: CGFloat) -> CGFloat {
-        let fraction = CGFloat(max(0, segment.endMinute - segment.startMinute)) / CGFloat(PricingSchedule.minutesPerDay)
-        return max(0.5, total * fraction)
-    }
-
-    private func nowOffset(total: CGFloat) -> CGFloat {
-        let minute = PricingSchedule.minuteOfDayUTC(date)
-        return total * CGFloat(minute) / CGFloat(PricingSchedule.minutesPerDay)
-    }
-}
-
-// MARK: - Helpers
-
-extension View {
-    /// Pre-iOS 17 background for Home Screen widget containers.
-    func pulseBackground(state: PricingState) -> some View {
-        self.background(
-            LinearGradient(colors: WidgetEntryView.palette(for: state),
-                           startPoint: .topLeading,
-                           endPoint: .bottomTrailing)
-        )
-    }
-
-    /// iOS 17+ wants the container background declared through the modifier; without it the gallery
-    /// shows an "adopt container background" placeholder instead of the widget.
-    @ViewBuilder
-    func containerBackgroundPulse(for state: PricingState) -> some View {
-        if #available(iOSApplicationExtension 17.0, *) {
-            self.containerBackground(for: .widget) {
-                LinearGradient(colors: WidgetEntryView.palette(for: state),
-                               startPoint: .topLeading,
-                               endPoint: .bottomTrailing)
-            }
-        } else {
-            self.pulseBackground(state: state)
-        }
-    }
-
-    /// Marks content privacy sensitive from iOS 16 on; a no-op on iOS 15 so the target stays 15.
-    @ViewBuilder
-    func privacySensitiveIfAvailable() -> some View {
-        if #available(iOSApplicationExtension 16.0, *) {
-            self.privacySensitive(true)
-        } else {
-            self
-        }
     }
 }
