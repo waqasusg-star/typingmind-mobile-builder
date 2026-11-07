@@ -62,7 +62,8 @@ enum WidgetBridge {
         var description: String {
             switch self {
             case .written(let url):
-                return "Shared snapshot written to " + url.lastPathComponent + "."            case .stagedForExtension:
+                return "Shared snapshot written to " + url.lastPathComponent + "."
+            case .stagedForExtension:
                 return "App Group is unavailable, so the snapshot stays in a form the widget can pick up from its own copy."
             case .groupUnavailable:
                 return "The snapshot could not be shared: no writable location. Open a Pulse widget once so it can start from the built-in schedule."
