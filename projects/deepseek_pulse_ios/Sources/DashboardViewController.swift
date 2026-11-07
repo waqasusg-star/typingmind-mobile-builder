@@ -503,6 +503,7 @@ final class DashboardViewController: UIViewController {
         client.cancel()
         isLoading = false
         refreshControl.endRefreshing()
+        ThemedBackgroundInstaller.install(in: self)
         render()
     }
 
