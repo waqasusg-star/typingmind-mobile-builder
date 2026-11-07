@@ -5,10 +5,10 @@
   "app_name": "HDrama",
   "bundle_id": "com.waqas.hdramabrowser",
   "namespace": "com.waqas.hdrama",
-  "version": "2.1.0",
-  "build_number": "22",
+  "version": "2.2.0",
+  "build_number": "23",
   "minimum_android": 26,
   "target_android": 35,
   "original_certificate_sha256": "499e74c1e9318c7bc00a0720314a7c7d7b8d12811d53871018b34882eb7095ca",
-  "description": "HDrama — cinematic aurora design system."
+  "description": "HDrama — full cinematic redesign of list screens on aurora glass."
 }

@@ -1,69 +1,147 @@
 package com.waqas.hdrama
 
-import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
-import android.widget.*
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 
-/** Recently watched series; hiding history never removes downloads, favorites or resume positions. */
+/** Recently watched, rebuilt on the aurora glass design. History never touches downloads or favorites. */
 class HistoryActivity : ComponentActivity() {
     private val library by lazy { DramaLibrary(this) }
     private lateinit var rows: LinearLayout
     private lateinit var usage: TextView
     private lateinit var clear: Button
     private val artworkAttempted = mutableSetOf<String>()
+
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
-        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window,false)
-        window.statusBarColor = AppColors.background; window.navigationBarColor = Color.BLACK
-        val root = column().apply { setBackgroundColor(AppColors.background); pad(16) }
-        root.addView(screenHeader("History") { finish() }.first)
-        usage = label("",12f).apply { setTextColor(AppColors.muted); setPadding(0,dp(8),0,dp(12)) }; root.addView(usage)
-        clear = button("Clear history") { confirmDelete(null) }.apply { contentDescription = "Clear history" }
-        root.addView(clear,LinearLayout.LayoutParams(-1,-2))
-        root.addView(label("Tap to continue watching · Hold to delete",12f).apply { setTextColor(AppColors.muted); setPadding(0,dp(8),0,dp(12)) })
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = Color.BLACK; window.navigationBarColor = Color.BLACK
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+
+        // Aurora behind everything; a ScrollView holds the content column.
+        val (root, content) = Visual.auroraScreen(this)
+        val scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false }
+        scroll.addView(content, ScrollView.LayoutParams(-1, -2))
+        root.addView(scroll)
+
+        // Hero header over the gradient fade.
+        val hero = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Visual.heroFade()
+            setPadding(dp(20), dp(18), dp(20), dp(16))
+            addView(eyebrow("YOUR JOURNEY"))
+            addView(label("History", 30f).apply {
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                letterSpacing = -0.02f
+                setPadding(0, dp(6), 0, dp(8))
+            })
+            addView(Visual.accentRule(this@HistoryActivity), LinearLayout.LayoutParams(dp(56), dp(3)))
+        }
+        content.addView(hero)
+
+        content.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(20), dp(14), dp(20), dp(10))
+            usage = label("", 12.5f).apply { setTextColor(Hd.muted) }
+            addView(usage, LinearLayout.LayoutParams(0, -2, 1f))
+            clear = Button(this@HistoryActivity).apply {
+                text = "Clear history"; isAllCaps = false; textSize = 12.5f
+                minHeight = 0; minimumHeight = 0; includeFontPadding = false
+                setPadding(dp(16), dp(10), dp(16), dp(10))
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                background = Visual.glass(this@HistoryActivity, 0x99)
+                setTextColor(Hd.danger)
+                setOnClickListener { confirmClear() }
+            }
+            addView(clear, LinearLayout.LayoutParams(-2, dp(40)))
+        })
+
         rows = column()
-        root.addView(ScrollView(this).apply { addView(rows) },LinearLayout.LayoutParams(-1,0,1f))
-        setContentView(root)
-        ViewCompat.setOnApplyWindowInsetsListener(root) { v,insets ->
+        content.addView(rows, LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(16), 0, dp(16), dp(24)) })
+
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
             val safe = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-            v.setPadding(dp(16)+safe.left,dp(8)+safe.top,dp(16)+safe.right,dp(16)+safe.bottom); WindowInsetsCompat.CONSUMED
+            v.setPadding(safe.left, safe.top, safe.right, 0)
+            scroll.setPadding(0, 0, 0, safe.bottom)
+            WindowInsetsCompat.CONSUMED
         }
+        setContentView(root)
     }
-    override fun onResume() { super.onResume(); render() }
-    private fun render() {
+
+    override fun onResume() { super.onResume(); refresh() }
+
+    private fun refresh() {
+        rows.removeAllViews()
+        artworkAttempted.clear()
         val items = library.history()
-        usage.text = if (items.size == 1) "1 recently watched series" else "${items.size} recently watched series"
-        clear.isEnabled = items.isNotEmpty(); rows.removeAllViews()
-        items.forEach { item ->
-            val card = seriesCard(item.url,item.title,"Recently watched","EP.${item.episode} · ${time(item.position)}" + if (item.duration > 0) " / ${time(item.duration)}" else "").apply {
-                contentDescription = "Continue watching: ${item.title}"
-                setOnClickListener { startActivity(Intent(this@HistoryActivity,PlayerActivity::class.java).putExtra("series",item.url)) }
-                setOnLongClickListener { confirmDelete(item); true }
-            }
-            rows.addView(card,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin = dp(12) })
-            if (!SeriesArtwork.hasPoster(this,item.url) && artworkAttempted.add(item.url)) lifecycleScope.launch {
-                SeriesArtwork.cache(this@HistoryActivity,Series(item.title,item.url,emptyList()))
-                if (SeriesArtwork.hasPoster(this@HistoryActivity,item.url)) rows.refreshPosters()
-            }
+        usage.text = if (items.isEmpty()) "" else "${items.size} series · recently watched"
+        clear.visibility = if (items.isEmpty()) View.GONE else View.VISIBLE
+        if (items.isEmpty()) {
+            rows.addView(emptyState("history", "Nothing here yet", "Dramas you start watching will appear here so you can jump back in."))
+            return
         }
-        if (items.isEmpty()) rows.addView(emptyState("history","Your next story starts here","Recently watched series will appear here with your saved episode and time."))
+        items.forEach { item -> rows.addView(historyCard(item)) }
     }
-    private fun confirmDelete(item: SavedDrama?) {
-        AlertDialog.Builder(this).setTitle(if (item == null) "Clear history?" else "Delete recent history?")
-            .setMessage((item?.title ?: "All recently watched series") + "\nFavorites, downloads and episode resume positions are kept.")
-            .setNegativeButton("Cancel",null).setPositiveButton(if (item == null) "Clear" else "Delete") { _,_ ->
-                if (item == null) library.clearHistory() else library.removeHistory(item.url)
-                render()
-            }.show().also(::polishDialog)
+
+    /** Elevated glass row with poster, title, episode position and an amber resume affordance. */
+    private fun historyCard(item: SavedDrama): View {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = Visual.glass(this@HistoryActivity, 0xcc)
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+        }
+        val poster = poster(item.url, item.title, width = 64, height = 92).apply { background = Visual.posterFrame(this@HistoryActivity) }
+        card.addView(poster)
+        val text = column().apply {
+            setPadding(dp(14), 0, 0, 0)
+            addView(label(item.title, 16f).apply {
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+            addView(label("EP. ${item.episode}" + if (item.position > 0) " · resumed at ${time(item.position)}" else "", 12f).apply {
+                setTextColor(Hd.muted); setPadding(0, dp(6), 0, dp(10))
+            })
+            addView(Visual.badge(this@HistoryActivity, "RESUME"))
+        }
+        card.addView(text, LinearLayout.LayoutParams(0, -2, 1f))
+        card.setOnClickListener { open(item.url) }
+        card.isFocusable = true
+        card.contentDescription = "Resume ${item.title}"
+        return card
+    }
+
+    private fun open(url: String) {
+        startActivity(Intent(this, PlayerActivity::class.java).putExtra("series", url))
+    }
+
+    private fun confirmClear() {
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("Clear history?")
+            .setMessage("This removes recently watched entries. Favorites, downloads and resume positions are kept.")
+            .setPositiveButton("Clear") { _, _ ->
+                library.clearHistory(); refresh()
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
+        dialog.show()
+        polishDialog(dialog)
     }
 }
