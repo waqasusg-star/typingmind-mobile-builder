@@ -5,8 +5,8 @@ import Foundation
 // Foundation only, compiled into BOTH targets: the app (Sources/ + Shared/) and the WidgetKit
 // extension (WidgetSources/ + Shared/ + Sources/RequestPolicy.swift).
 //
-// It declares no type that already exists in Sources/RequestPolicy.swift. The API key never
-// reaches this file: only display-safe values are encoded.
+// It declares no type that already exists in Sources/RequestPolicy.swift or in the other Shared
+// Core files. The API key never reaches this file: only display-safe values are encoded.
 
 /// App Group shared by the app and the widget extension.
 enum WidgetShared {
@@ -17,7 +17,7 @@ enum WidgetShared {
     /// The extension's own copy, used when the App Group container is unavailable.
     static let localCacheFileName = "pulse-widget-local.json"
     /// Current on-disk payload version. Bumping this makes older payloads unreadable by design.
-    static let schemaVersion = 2
+    static let schemaVersion = 3
     /// Dates older than this are labelled as stale instead of being presented as current.
     static let staleAfter: TimeInterval = 60 * 60
     /// Extension bundle identifier, used for diagnostics and the setup state.
@@ -44,7 +44,7 @@ enum WidgetDataState: String, Codable, Equatable {
         case .fresh:
             return "Balance from the DeepSeek Pulse app."
         case .stale:
-            return "Showing the last balance the app saved. Open the app to refresh."
+            return "Showing the last balance the app saved. Tap the refresh icon to update."
         case .groupUnavailable:
             return "No saved snapshot yet. Open DeepSeek Pulse once; the widget saves its own copy from then on."
         case .empty:
@@ -88,7 +88,8 @@ struct WidgetRate: Codable, Equatable {
 /// The complete, self-contained payload the extension needs to draw itself offline.
 ///
 /// The schedule is embedded rather than shared by reference so the extension can compute state,
-/// countdown and timeline boundaries with no app running and no network.
+/// countdown and timeline boundaries with no app running and no network. `appearance` is optional
+/// so a payload written by an older build still decodes.
 struct WidgetSnapshotPayload: Codable, Equatable {
     var schemaVersion: Int
     /// When the app wrote this payload.
@@ -99,6 +100,8 @@ struct WidgetSnapshotPayload: Codable, Equatable {
     var schedule: PricingSchedule
     var models: [WidgetRate]
     var hasAPIKey: Bool
+    /// Theme, widget design and display switches chosen in Widget Studio.
+    var appearance: WidgetAppearance?
 
     /// Builds a payload from raw pieces without touching the file system, so the same construction
     /// is reused by the app bridge and by widget-only fallback states. Never carries key material.
@@ -108,14 +111,16 @@ struct WidgetSnapshotPayload: Codable, Equatable {
                      balance: WidgetBalance?,
                      schedule: PricingSchedule,
                      models: [WidgetRate],
-                     hasAPIKey: Bool) -> WidgetSnapshotPayload {
+                     hasAPIKey: Bool,
+                     appearance: WidgetAppearance? = nil) -> WidgetSnapshotPayload {
         WidgetSnapshotPayload(schemaVersion: schemaVersion,
                               writtenAt: writtenAt,
                               balanceFetchedAt: balanceFetchedAt,
                               balance: balance,
                               schedule: schedule,
                               models: models,
-                              hasAPIKey: hasAPIKey)
+                              hasAPIKey: hasAPIKey,
+                              appearance: appearance)
     }
 }
 
@@ -134,15 +139,33 @@ struct WidgetSnapshotEnvelope: Equatable {
     var balance: WidgetBalance? { payload?.balance }
     var hasAPIKey: Bool { payload?.hasAPIKey ?? false }
 
-    /// Balance line, or an explicit placeholder when there is nothing trustworthy to show.
+    /// The saved appearance, or the default one. Never nil, so views always have a theme.
+    var appearance: WidgetAppearance {
+        (payload?.appearance ?? WidgetAppearance.defaultAppearance).normalised()
+    }
+
+    /// True when a real, available balance is known and should be shown.
+    var hasUsableBalance: Bool {
+        guard let balance = payload?.balance else { return false }
+        return balance.isAvailable || !balance.totalText.isEmpty
+    }
+
+    /// The available balance, formatted by the app. "--" when there is nothing trustworthy.
     func balanceLine() -> String {
-        if let balance = payload?.balance {
+        if let balance = payload?.balance, !balance.totalText.isEmpty {
             return balance.totalText
         }
         if state == .fresh || state == .stale {
-            return hasAPIKey ? "—" : "No key"
+            return hasAPIKey ? "--" : "No key"
         }
         return "--"
+    }
+
+    /// Whether the API says the account can actually make calls right now.
+    /// Nil means "unknown", so the widget must not claim either way.
+    var availabilityText: String? {
+        guard let balance = payload?.balance else { return nil }
+        return balance.isAvailable ? "Available" : "Not available"
     }
 
     /// Balance caption that never claims freshness the data does not have.
@@ -155,8 +178,16 @@ struct WidgetSnapshotEnvelope: Equatable {
         }
         let relative = ClockFormat.relative(fetched, now: now)
         if state == .stale {
-            return "Last saved " + relative + " · open the app"
+            return "Last saved " + relative + " - tap to refresh"
         }
         return "Updated " + relative
+    }
+
+    /// Short caption used by the compact designs.
+    func shortBalanceCaption(now: Date) -> String {
+        guard let fetched = payload?.balanceFetchedAt else {
+            return hasAPIKey ? "Not loaded" : "No key"
+        }
+        return ClockFormat.relative(fetched, now: now)
     }
 }
