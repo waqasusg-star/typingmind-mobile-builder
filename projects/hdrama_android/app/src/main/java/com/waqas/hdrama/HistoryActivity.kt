@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -12,10 +13,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.launch
 
 /** Recently watched, rebuilt on the aurora glass design. History never touches downloads or favorites. */
 class HistoryActivity : ComponentActivity() {
@@ -23,11 +23,10 @@ class HistoryActivity : ComponentActivity() {
     private lateinit var rows: LinearLayout
     private lateinit var usage: TextView
     private lateinit var clear: Button
-    private val artworkAttempted = mutableSetOf<String>()
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
-        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.BLACK; window.navigationBarColor = Color.BLACK
         WindowCompat.getInsetsController(window, window.decorView).apply {
             isAppearanceLightStatusBars = false
@@ -36,8 +35,7 @@ class HistoryActivity : ComponentActivity() {
 
         // Aurora behind everything; a ScrollView holds the content column.
         val (root, content) = Visual.auroraScreen(this)
-        val scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false }
-        scroll.addView(content, ScrollView.LayoutParams(-1, -2))
+        val scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false; addView(content) }
         root.addView(scroll)
 
         // Hero header over the gradient fade.
@@ -51,7 +49,7 @@ class HistoryActivity : ComponentActivity() {
                 letterSpacing = -0.02f
                 setPadding(0, dp(6), 0, dp(8))
             })
-            addView(Visual.accentRule(this@HistoryActivity), LinearLayout.LayoutParams(dp(56), dp(3)))
+            addView(Visual.accentRule(this), LinearLayout.LayoutParams(dp(56), dp(3)))
         }
         content.addView(hero)
 
@@ -66,7 +64,7 @@ class HistoryActivity : ComponentActivity() {
                 setPadding(dp(16), dp(10), dp(16), dp(10))
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 background = Visual.glass(this@HistoryActivity, 0x99)
-                setTextColor(Hd.danger)
+                setTextColor(AppColors.danger)
                 setOnClickListener { confirmClear() }
             }
             addView(clear, LinearLayout.LayoutParams(-2, dp(40)))
@@ -88,7 +86,6 @@ class HistoryActivity : ComponentActivity() {
 
     private fun refresh() {
         rows.removeAllViews()
-        artworkAttempted.clear()
         val items = library.history()
         usage.text = if (items.isEmpty()) "" else "${items.size} series · recently watched"
         clear.visibility = if (items.isEmpty()) View.GONE else View.VISIBLE
@@ -99,7 +96,7 @@ class HistoryActivity : ComponentActivity() {
         items.forEach { item -> rows.addView(historyCard(item)) }
     }
 
-    /** Elevated glass row with poster, title, episode position and an amber resume affordance. */
+    /** Elevated glass row with poster, title, episode position and a resume badge. */
     private fun historyCard(item: SavedDrama): View {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -114,7 +111,7 @@ class HistoryActivity : ComponentActivity() {
             addView(label(item.title, 16f).apply {
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 maxLines = 2
-                ellipsize = android.text.TextUtils.TruncateAt.END
+                ellipsize = TextUtils.TruncateAt.END
             })
             addView(label("EP. ${item.episode}" + if (item.position > 0) " · resumed at ${time(item.position)}" else "", 12f).apply {
                 setTextColor(Hd.muted); setPadding(0, dp(6), 0, dp(10))
