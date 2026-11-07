@@ -11,9 +11,13 @@ enum WidgetKitCheckFailure: Error {
 
 func widgetKitChecks() throws {
     var checked = 0
+    // 1.0.8: a failing check records its label and execution continues, so ONE CI run reports every
+    // stale assertion instead of only the first. The function still throws before it prints success,
+    // so a failure remains a real non-zero exit. Unexpected encoding/setup throws are not caught here.
+    var failures: [String] = []
     func expect(_ condition: Bool, _ label: String) throws {
         checked += 1
-        if !condition { throw WidgetKitCheckFailure.failed(label) }
+        if !condition { failures.append(label) }
     }
 
     func utc(_ text: String) -> Date {
@@ -111,10 +115,18 @@ func widgetKitChecks() throws {
     try expect(noBalance.state == .fresh, "a payload without a balance is still fresh (age uses writtenAt)")
     try expect(noBalance.balanceLine() == "--", "a payload with no balance shows the placeholder, not an invented amount")
     try expect(noBalance.hasUsableBalance == false, "no balance is not a usable balance")
-    // The wording contract the widget actually renders: with no fetch time the envelope tells the user
-    // to open the app to load a balance, and never claims freshness it does not have.
-    try expect(noBalance.balanceCaption(now: now).contains("open the app"), "the caption asks the user to open the app")
-    try expect(noBalance.balanceCaption(now: now) != "Updated", "the caption makes no freshness claim without a fetch time")
+    // Two honest branches, both asserted: a keyless payload must not promise a balance that opening
+    // the app cannot produce; a key-present payload must point the user at the app.
+    try expect(noBalance.balanceCaption(now: now) == "Saved schedule only - no account data yet", "a keyless payload says only the schedule is saved")
+    try expect(!noBalance.balanceCaption(now: now).lowercased().contains("open the app"), "a keyless payload does not point at the app for a balance")
+
+    let keyedNoBalancePayload = WidgetSnapshotPayload(schemaVersion: WidgetShared.schemaVersion,
+                                                     writtenAt: now, balanceFetchedAt: nil, balance: nil,
+                                                     schedule: schedule, models: [], hasAPIKey: true,
+                                                     hasAPIKeyKnown: true)
+    let keyedNoBalance = WidgetCacheCodec.decode(try WidgetCacheCodec.encode(keyedNoBalancePayload), now: now)
+    try expect(keyedNoBalance.balanceCaption(now: now).contains("open the app"), "a key-present payload asks the user to open the app to load the balance")
+    try expect(keyedNoBalance.balanceCaption(now: now) != "Updated", "no freshness claim without a fetch time")
 
     // MARK: Sanitisation
 
