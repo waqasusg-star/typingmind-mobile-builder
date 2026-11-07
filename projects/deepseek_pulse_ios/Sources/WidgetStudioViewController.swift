@@ -185,6 +185,14 @@ final class WidgetStudioViewController: UIViewController {
     }
 
     private func startClock() {
+        timer?.invalidate()
+        let clock = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.render()
+        }
+        clock.tolerance = 0.2
+        RunLoop.main.add(clock, forMode: .common)
+        timer = clock
+    }
 
     /// Writes the shared snapshot when the screen opens, so the widget is not left empty.
     private func writeSnapshot() {
