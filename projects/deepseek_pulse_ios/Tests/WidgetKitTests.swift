@@ -419,6 +419,88 @@ func widgetKitChecks() throws {
     try expect(WidgetShared.extensionBundleIdentifier == "com.waqas.deepseekpulse.widgets", "extension bundle identifier")
     try expect(WidgetShared.cacheFileName == "widget-snapshot.json", "cache file name")
 
+    // MARK: 1.0.9 — honest key wording and the widget refresh handshake
+
+    // The widget cannot read the Keychain, so an absent balance must never be reported as a missing
+    // key. This is the exact regression the user reported twice.
+    try expect(WidgetRefreshHandshakeRules.noBalanceTitle(hasAPIKeyKnown: false, hasAPIKey: false) == "Open app",
+               "an unknown key state invites the user to open the app, not to add a key")
+    try expect(WidgetRefreshHandshakeRules.noBalanceTitle(hasAPIKeyKnown: true, hasAPIKey: false) == "Add key in app",
+               "only a positively reported missing key says Add key")
+    try expect(WidgetRefreshHandshakeRules.noBalanceTitle(hasAPIKeyKnown: true, hasAPIKey: true) == "Open app",
+               "a known key with no balance is a loading state")
+    for known in [true, false] {
+        for hasKey in [true, false] {
+            let title = PulseBalanceWording.slot(hasBalance: false, hasAPIKey: hasKey, hasAPIKeyKnown: known)
+            try expect(!title.lowercased().contains("no key"), "the slot never prints No key")
+            let caption = PulseBalanceWording.caption(hasBalance: false,
+                                                      hasAPIKeyKnown: known,
+                                                      hasAPIKey: hasKey,
+                                                      fetchedAtAge: nil,
+                                                      isStale: false)
+            try expect(!caption.lowercased().contains("no key"), "the caption never prints No key")
+            try expect(!caption.lowercased().contains("no api key"), "the caption never prints No API key")
+        }
+    }
+    try expect(PulseBalanceWording.slot(hasBalance: true, hasAPIKey: false) == "",
+               "a real balance always wins the slot")
+
+    // Cooldown: the widget cannot spam the app.
+    try expect(WidgetRefreshHandshakeRules.shouldRequest(state: .empty,
+                                                          hasBalance: false,
+                                                          lastRequestAt: nil,
+                                                          lastAnswerAt: nil,
+                                                          now: now),
+               "a widget with no data may ask once")
+    try expect(!WidgetRefreshHandshakeRules.shouldRequest(state: .empty,
+                                                           hasBalance: false,
+                                                           lastRequestAt: now.addingTimeInterval(-30),
+                                                           lastAnswerAt: nil,
+                                                           now: now),
+               "a request inside the cooldown is suppressed")
+    try expect(WidgetRefreshHandshakeRules.shouldRequest(state: .empty,
+                                                          hasBalance: false,
+                                                          lastRequestAt: now.addingTimeInterval(-(WidgetRefreshHandshakeRules.minimumInterval + 5)),
+                                                          lastAnswerAt: nil,
+                                                          now: now),
+               "a request after the cooldown is allowed again")
+    try expect(!WidgetRefreshHandshakeRules.shouldRequest(state: .fresh,
+                                                           hasBalance: true,
+                                                           lastRequestAt: nil,
+                                                           lastAnswerAt: nil,
+                                                           now: now),
+               "fresh data never triggers a request")
+    try expect(WidgetRefreshHandshakeRules.shouldRequest(state: .stale,
+                                                          hasBalance: true,
+                                                          lastRequestAt: nil,
+                                                          lastAnswerAt: nil,
+                                                          now: now),
+               "stale data triggers a request")
+    try expect(WidgetRefreshHandshakeRules.reason(state: .stale, hasBalance: true) == .staleBalance,
+               "a stale balance is named as such")
+    try expect(!WidgetRefreshHandshakeRules.shouldRequest(state: .corrupt,
+                                                           hasBalance: false,
+                                                           lastRequestAt: nil,
+                                                           lastAnswerAt: nil,
+                                                           now: now),
+               "a corrupt payload is the app's job, not a handshake")
+
+    let freshRequest = WidgetRefreshRequest(requestedAt: now, reason: .missingBalance)
+    try expect(!WidgetRefreshHandshakeRules.isExpired(freshRequest, now: now.addingTimeInterval(60)),
+               "a request a minute old is still actionable")
+    try expect(WidgetRefreshHandshakeRules.isExpired(freshRequest, now: now.addingTimeInterval(60 * 60 * 7)),
+               "a request from seven hours ago is ignored")
+
+    // A balance-carrying copy must outrank a newer schedule-only seed. This is the second cause of
+    // the permanent "No key": the extension rewrote its own seed on every timeline build.
+    let seedNow = WidgetSnapshotPayload.builtIn(now: now, appearance: nil)
+    let seedEnvelope = WidgetCacheCodec.decode(try WidgetCacheCodec.encode(seedNow), now: now)
+    try expect(!seedEnvelope.hasUsableBalance, "the built-in seed carries no balance")
+    try expect(WidgetSnapshotStore.isBetter(decoded, than: seedEnvelope),
+               "a copy that holds a balance outranks an empty seed")
+    try expect(!WidgetSnapshotStore.isBetter(seedEnvelope, than: decoded),
+               "the empty seed never displaces real data")
+
     // MARK: Themes and designs — every palette reachable, every design assigned to a family
 
     try expect(PulseThemes.all.count >= 10, "at least ten themes are shipped (found " + String(PulseThemes.all.count) + ")")
