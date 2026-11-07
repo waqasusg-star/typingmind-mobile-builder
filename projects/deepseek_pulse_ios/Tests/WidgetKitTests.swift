@@ -169,7 +169,7 @@ func widgetKitChecks() throws {
     // 1.0.8: the seed reports the key state as UNKNOWN, not as a positive "no key", unless the
     // caller passes what the extension last knew. Only a known-absent key may say "Add API key".
     try expect(seeded.hasAPIKeyKnown == false, "the built-in payload reports the key state as unknown")
-    try expect(PulseBalanceWording.slot(hasBalance: false, hasAPIKey: seeded.hasAPIKey) == "Add API key", "the slot text itself is unchanged")
+    try expect(PulseBalanceWording.legacySlot(hasBalance: false, hasAPIKey: seeded.hasAPIKey) == "Add key in app", "the seed never prints the old No key wording")
     let knownNoKey = WidgetSnapshotPayload.builtIn(now: now, appearance: nil, hasAPIKey: false, hasAPIKeyKnown: true)
     try expect(knownNoKey.hasAPIKeyKnown == true, "a carried-over known state survives a reseed")
     try expect(WidgetCacheCodec.envelope(for: knownNoKey, now: now).hasAPIKeyKnown, "the known state round-trips through the envelope")
