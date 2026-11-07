@@ -8,7 +8,7 @@
   "version": "1.0.7",
   "build_number": "8",
   "minimum_ios": "15.0",
-  "description": "1.0.7 (build 8): icon renderer with centred mark and glow; widget entry exposes honest key/balance state.",
+  "description": "1.0.7 (build 8): add the theme and design picker screen.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
