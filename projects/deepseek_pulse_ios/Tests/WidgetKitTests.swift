@@ -147,7 +147,7 @@ func widgetKitChecks() throws {
     try expect(seeded.hasAPIKeyKnown == false, "the built-in payload reports the key state as unknown")
     try expect(PulseBalanceWording.slot(hasBalance: false, hasAPIKey: seeded.hasAPIKey) == "Add API key", "the slot text itself is unchanged")
     let knownNoKey = WidgetSnapshotPayload.builtIn(now: now, appearance: nil, hasAPIKey: false, hasAPIKeyKnown: true)
-    try expect(knownNoKey.hasAPIKeyKnown, "a carried-over known state survives a reseed")
+    try expect(knownNoKey.hasAPIKeyKnown == true, "a carried-over known state survives a reseed")
     try expect(WidgetCacheCodec.envelope(for: knownNoKey, now: now).hasAPIKeyKnown, "the known state round-trips through the envelope")
     let unknownKey = WidgetSnapshotPayload.builtIn(now: now, appearance: nil)
     try expect(!WidgetCacheCodec.envelope(for: unknownKey, now: now).hasAPIKeyKnown, "an unknown state stays unknown through the envelope")
