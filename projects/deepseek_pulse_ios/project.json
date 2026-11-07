@@ -8,7 +8,7 @@
   "version": "1.0.7",
   "build_number": "8",
   "minimum_ios": "15.0",
-  "description": "1.0.7 (build 8): Settings runtime, using the theme picker entry point.",
+  "description": "1.0.7 (build 8): Settings save path with Keychain-verified key storage.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
