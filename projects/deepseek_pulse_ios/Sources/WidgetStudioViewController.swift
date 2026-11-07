@@ -215,8 +215,8 @@ final class WidgetStudioViewController: UIViewController {
         let appearance = store.widgetAppearance.normalised()
 
         view.backgroundColor = AppColors.background
-        fullCard.apply(snapshot: snapshot, schedule: schedule, now: now, appearance: appearance)
-        compactCard.apply(snapshot: snapshot, schedule: schedule, now: now, appearance: appearance)
+        fullCard.apply(snapshot: snapshot, schedule: schedule, now: now, appearance: AppAppearance(store: store))
+        compactCard.apply(snapshot: snapshot, schedule: schedule, now: now, appearance: AppAppearance(store: store))
         // 1.0.9: the preview draws the SAME accessory design the Lock Screen will, using the shared
         // LockScreenText strings.
         lockCard.apply(style: appearance.lockScreen.rectangular,
