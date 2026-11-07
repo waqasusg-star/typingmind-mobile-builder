@@ -208,6 +208,8 @@ struct WidgetAppearance: Codable, Equatable {
     var themeID: String
     var smallDesign: WidgetDesign
     var mediumDesign: WidgetDesign
+    /// 1.0.9: the Lock Screen choices, one design per accessory family.
+    var lockScreen: LockScreenAppearance
     var artwork: String
     var showBalance: Bool
     var showRefresh: Bool
@@ -216,6 +218,7 @@ struct WidgetAppearance: Codable, Equatable {
     static let defaultAppearance = WidgetAppearance(themeID: PulseThemes.fallbackID,
                                                     smallDesign: .aurora,
                                                     mediumDesign: .dashboard,
+                                                    lockScreen: .defaultAppearance,
                                                     artwork: "gradient",
                                                     showBalance: true,
                                                     showRefresh: true,
@@ -229,15 +232,18 @@ struct WidgetAppearance: Codable, Equatable {
 
     var summary: String {
         theme.name + " | " + smallDesign.title + " + " + mediumDesign.title
+            + " | Lock Screen: " + lockScreen.rectangular.title
     }
 
     enum CodingKeys: String, CodingKey {
-        case themeID, smallDesign, mediumDesign, artwork, showBalance, showRefresh, showDayBand
+        case themeID, smallDesign, mediumDesign, lockScreen, artwork
+        case showBalance, showRefresh, showDayBand
     }
 
     init(themeID: String,
          smallDesign: WidgetDesign,
          mediumDesign: WidgetDesign,
+         lockScreen: LockScreenAppearance = .defaultAppearance,
          artwork: String,
          showBalance: Bool,
          showRefresh: Bool,
@@ -245,6 +251,7 @@ struct WidgetAppearance: Codable, Equatable {
         self.themeID = themeID
         self.smallDesign = smallDesign
         self.mediumDesign = mediumDesign
+        self.lockScreen = lockScreen
         self.artwork = artwork
         self.showBalance = showBalance
         self.showRefresh = showRefresh
@@ -260,6 +267,11 @@ struct WidgetAppearance: Codable, Equatable {
         showRefresh = (try? container.decodeIfPresent(Bool.self, forKey: .showRefresh)) ?? defaults.showRefresh
         showDayBand = (try? container.decodeIfPresent(Bool.self, forKey: .showDayBand)) ?? defaults.showDayBand
 
+        // 1.0.9: absent for payloads written by 1.0.8 and earlier, which fall back to the new design
+        // set instead of blanking the Lock Screen slot.
+        lockScreen = (try? container.decodeIfPresent(LockScreenAppearance.self, forKey: .lockScreen))
+            ?? defaults.lockScreen
+
         let small = (try? container.decodeIfPresent(WidgetDesign.self, forKey: .smallDesign)) ?? defaults.smallDesign
         let medium = (try? container.decodeIfPresent(WidgetDesign.self, forKey: .mediumDesign)) ?? defaults.mediumDesign
         smallDesign = WidgetDesign.smallFamily.contains(small) ? small : defaults.smallDesign
@@ -272,6 +284,9 @@ struct WidgetAppearance: Codable, Equatable {
     /// Clamps every field to a valid value; used by the app before writing the payload.
     func normalised() -> WidgetAppearance {
         var copy = self
+        copy.lockScreen = LockScreenAppearance(rectangular: copy.lockScreen.rectangular,
+                                              circular: copy.lockScreen.circular,
+                                              inline: copy.lockScreen.inline)
         if !PulseThemes.contains(id: copy.themeID) { copy.themeID = PulseThemes.fallbackID }
         if !WidgetDesign.smallFamily.contains(copy.smallDesign) { copy.smallDesign = .aurora }
         if !WidgetDesign.mediumFamily.contains(copy.mediumDesign) { copy.mediumDesign = .dashboard }
