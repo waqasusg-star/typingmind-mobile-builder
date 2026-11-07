@@ -108,8 +108,12 @@ func widgetKitChecks() throws {
     let noBalanceData = try WidgetCacheCodec.encode(noBalancePayload)
     let noBalance = WidgetCacheCodec.decode(noBalanceData, now: now)
     try expect(noBalance.state == .fresh, "a payload without a balance is still fresh (age uses writtenAt)")
-    try expect(noBalance.balanceLine() == "No key", "no key is stated, not faked")
-    try expect(noBalance.balanceCaption(now: now) == "No API key saved", "no-key caption")
+    try expect(noBalance.balanceLine() == "--", "a payload with no balance shows the placeholder, not an invented amount")
+    try expect(noBalance.hasUsableBalance == false, "no balance is not a usable balance")
+    // The wording contract the widget actually renders: with no fetch time the envelope tells the user
+    // to open the app to load a balance, and never claims freshness it does not have.
+    try expect(noBalance.balanceCaption(now: now).contains("open the app"), "the caption asks the user to open the app")
+    try expect(noBalance.balanceCaption(now: now) != "Updated", "the caption makes no freshness claim without a fetch time")
 
     // MARK: Sanitisation
 
