@@ -191,6 +191,11 @@ enum PulseBalanceWording {
                                                         hasAPIKey: hasAPIKey)
     }
 
+    /// The older two-argument slot wording, kept for the views that only know the flag.
+    static func legacySlot(hasBalance: Bool, hasAPIKey: Bool) -> String {
+        slot(hasBalance: hasBalance, hasAPIKey: hasAPIKey, hasAPIKeyKnown: true)
+    }
+
     /// The long caption under the balance slot.
     static func caption(hasBalance: Bool, hasAPIKey: Bool, fetchedAtAge: TimeInterval?, isStale: Bool) -> String {
         if hasBalance {
