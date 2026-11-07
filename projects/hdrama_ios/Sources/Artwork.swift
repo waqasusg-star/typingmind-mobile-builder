@@ -5,15 +5,23 @@ import CryptoKit
 final class Artwork {
     static let shared = Artwork()
 
+    /// Posted when a poster finishes downloading so visible cards can refresh without a full redraw.
+    static let changed = Notification.Name("hdrama.artwork.changed")
+
     private let defaults = UserDefaults.standard
     private let images = NSCache<NSString, UIImage>()
     private let session: URLSession
+
+    /// Series whose poster download already failed this session, so a list refresh cannot spin up
+    /// repeated requests for a dead CDN address.
+    private var failed = Set<String>()
 
     private init() {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 20
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         session = URLSession(configuration: configuration)
+        images.countLimit = 120
     }
 
     private var directory: URL {
@@ -30,9 +38,12 @@ final class Artwork {
         return directory.appendingPathComponent(digest + ".jpg")
     }
 
+    private func storedSource(_ seriesUrl: String) -> String? {
+        defaults.string(forKey: "poster-source:" + seriesUrl)
+    }
+
     func hasPoster(_ seriesUrl: String) -> Bool {
-        FileManager.default.fileExists(atPath: file(seriesUrl).path)
-            && defaults.string(forKey: "poster-source:" + seriesUrl) != nil
+        FileManager.default.fileExists(atPath: file(seriesUrl).path) && storedSource(seriesUrl) != nil
     }
 
     func image(_ seriesUrl: String) -> UIImage? {
@@ -41,6 +52,7 @@ final class Artwork {
         let key = seriesUrl as NSString
         if let cached = images.object(forKey: key) { return cached }
         guard let data = try? Data(contentsOf: source), let image = UIImage(data: data) else {
+            // A corrupt cache entry is dropped so the next fetch can replace it.
             try? FileManager.default.removeItem(at: source)
             defaults.removeObject(forKey: "poster-source:" + seriesUrl)
             return nil
@@ -50,13 +62,19 @@ final class Artwork {
     }
 
     func remember(_ series: Series) {
-        let prior = enrich(series)
-        defaults.set(series.posterUrl.isEmpty ? prior.posterUrl : series.posterUrl, forKey: "poster-title:" + series.url)
-        defaults.set(series.seasonLabel.isEmpty ? prior.seasonLabel : series.seasonLabel, forKey: "poster-season:" + series.url)
+        if !series.posterUrl.isEmpty {
+            // Only the artwork address is stored here; the title stays in the Library record.
+            defaults.set(series.posterUrl, forKey: "poster-title:" + series.url)
+        }
+        defaults.set(series.seasonLabel.isEmpty
+                     ? (defaults.string(forKey: "poster-season:" + series.url) ?? "")
+                     : series.seasonLabel,
+                     forKey: "poster-season:" + series.url)
     }
 
     func enrich(_ series: Series) -> Series {
         var copy = series
+        if copy.posterUrl.isEmpty { copy.posterUrl = storedSource(series.url) ?? "" }
         if copy.posterUrl.isEmpty { copy.posterUrl = defaults.string(forKey: "poster-title:" + series.url) ?? "" }
         if copy.seasonLabel.isEmpty { copy.seasonLabel = defaults.string(forKey: "poster-season:" + series.url) ?? "" }
         return copy
@@ -72,7 +90,8 @@ final class Artwork {
            let regex = try? NSRegularExpression(pattern: "<img[^>]+alt=[\"']([^\"']*)[\"'][^>]*>", options: [.caseInsensitive]) {
             let range = NSRange(html.startIndex..<html.endIndex, in: html)
             for match in regex.matches(in: html, range: range) {
-                guard let full = Range(match.range(at: 0), in: html),
+                guard match.numberOfRanges > 1,
+                      let full = Range(match.range(at: 0), in: html),
                       let alt = Range(match.range(at: 1), in: html) else { continue }
                 guard normalized(String(html[alt])).contains(wanted) else { continue }
                 let tag = String(html[full])
@@ -99,16 +118,20 @@ final class Artwork {
         return String(tag[range])
     }
 
+    /// Keeps the signed query string; only the fragment is discarded.
     private func absoluteURL(_ raw: String, base: String) -> String? {
-        guard let resolved = URL(string: raw, relativeTo: URL(string: base))?.absoluteURL,
-              resolved.scheme?.lowercased() == "https" else { return nil }
-        return RequestPolicy.posterURL(raw, base: base)?.absoluteString
+        RequestPolicy.fetchablePoster(raw, base: base)?.absoluteString
     }
 
     func fetch(_ series: Series, completion: (() -> Void)? = nil) {
         let enriched = enrich(series)
-        guard let url = URL(string: enriched.posterUrl), url.scheme == "https" else { completion?(); return }
-        if hasPoster(series.url), defaults.string(forKey: "poster-source:" + series.url) == enriched.posterUrl {
+        guard !failed.contains(series.url) else { completion?(); return }
+        guard let url = RequestPolicy.fetchablePoster(enriched.posterUrl, base: series.url) else {
+            completion?()
+            return
+        }
+        let source = url.absoluteString
+        if hasPoster(series.url), storedSource(series.url) == source {
             completion?()
             return
         }
@@ -116,19 +139,40 @@ final class Artwork {
         request.setValue(series.url, forHTTPHeaderField: "Referer")
         request.setValue(UserAgent.current, forHTTPHeaderField: "User-Agent")
         session.dataTask(with: request) { [weak self] data, _, _ in
-            guard let self = self, let data = data, data.count < 2 * 1024 * 1024, let image = UIImage(data: data) else {
-                DispatchQueue.main.async { completion?() }
+            guard let self = self else { return }
+            guard let data = data, data.count < 4 * 1024 * 1024, let image = UIImage(data: data) else {
+                DispatchQueue.main.async {
+                    self.failed.insert(series.url)
+                    completion?()
+                }
                 return
             }
-            let scaled = Artwork.scale(image, limit: 240)
+            // Posters carry no alpha; rendering them opaque first avoids a costly per-frame blend.
+            let scaled = Artwork.scale(Artwork.flatten(image), limit: 260)
             if let jpeg = scaled.jpegData(compressionQuality: 0.85) {
                 try? jpeg.write(to: self.file(series.url))
-                self.defaults.set(enriched.posterUrl, forKey: "poster-source:" + series.url)
+                self.defaults.set(source, forKey: "poster-source:" + series.url)
+                self.defaults.set(source, forKey: "poster-title:" + series.url)
                 self.images.setObject(scaled, forKey: series.url as NSString)
-                self.defaults.set(enriched.posterUrl, forKey: "poster-title:" + series.url)
             }
-            DispatchQueue.main.async { completion?() }
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: Artwork.changed, object: nil)
+                completion?()
+            }
         }.resume()
+    }
+
+    private static func flatten(_ image: UIImage) -> UIImage {
+        guard image.cgImage != nil else { return image }
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = true
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: image.size, format: format)
+        return renderer.image { _ in
+            AppColors.surface.setFill()
+            UIRectFill(CGRect(origin: .zero, size: image.size))
+            image.draw(in: CGRect(origin: .zero, size: image.size))
+        }
     }
 
     private static func scale(_ image: UIImage, limit: CGFloat) -> UIImage {
