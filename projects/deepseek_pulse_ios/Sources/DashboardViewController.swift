@@ -67,6 +67,7 @@ final class DashboardViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         applyTheme()
+        ThemedBackgroundInstaller.install(in: self)
         startClock()
         render()
         autoRefreshIfStale()
@@ -76,6 +77,14 @@ final class DashboardViewController: UIViewController {
         super.viewWillDisappear(animated)
         timer?.invalidate()
         timer = nil
+    }
+
+    /// 1.0.9: also repaints the themed backdrop, so switching theme changes the screen background
+    /// and the artwork together with the card colours.
+    private func applyTheme() {
+        view.backgroundColor = AppColors.background
+        ThemedBackgroundInstaller.install(in: self)
+        AppThemeRefresh.refresh()
     }
 
     // MARK: - Layout
