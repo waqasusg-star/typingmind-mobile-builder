@@ -47,9 +47,15 @@ struct WidgetEntryView: View {
     var body: some View {
         Group {
             if #available(iOSApplicationExtension 16.0, *) {
-                content.containerBackgroundPulse(mood: mood, state: state, overlay: mood.rampOverlay)
+                content.containerBackgroundPulse(mood: mood,
+                                                 state: state,
+                                                 artwork: appearance.artwork,
+                                                 overlay: mood.rampOverlay)
             } else {
-                content.pulseBackground(mood: mood, state: state, overlay: mood.rampOverlay)
+                content.pulseThemedBackground(mood: mood,
+                                              state: state,
+                                              artwork: appearance.artwork,
+                                              overlay: mood.rampOverlay)
             }
         }
         .widgetURL(WidgetPolicy.deepLinkURL())
@@ -66,11 +72,11 @@ struct WidgetEntryView: View {
             if #available(iOSApplicationExtension 16.0, *) {
                 switch family {
                 case .accessoryInline:
-                    PulseInlineView(entry: entry)
+                    PulseAccessoryInline(entry: entry, style: appearance.lockScreen.inline)
                 case .accessoryCircular:
-                    PulseCircularView(entry: entry)
+                    PulseAccessoryCircular(entry: entry, style: appearance.lockScreen.circular)
                 case .accessoryRectangular:
-                    PulseRectangularView(entry: entry)
+                    PulseAccessoryRectangular(entry: entry, style: appearance.lockScreen.rectangular)
                 default:
                     mediumContent
                 }
