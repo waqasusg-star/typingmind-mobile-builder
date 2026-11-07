@@ -86,6 +86,16 @@ final class WidgetStudioViewController: UIViewController {
         themeButton.contentHorizontalAlignment = .leading
         themeButton.addTarget(self, action: #selector(themesTapped), for: .touchUpInside)
         themeCard.content.addArrangedSubview(themeButton)
+
+        // 1.0.9: the Lock Screen designs are reachable from here, so the redesigned accessories can be
+        // chosen without editing anything else.
+        let lockButton = UIButton(type: .system)
+        lockButton.setTitle("Choose Lock Screen design", for: .normal)
+        lockButton.titleLabel?.font = Typography.scaled(14, .semibold, style: .subheadline)
+        lockButton.setTitleColor(AppColors.accentSoft, for: .normal)
+        lockButton.contentHorizontalAlignment = .leading
+        lockButton.addTarget(self, action: #selector(lockScreenTapped), for: .touchUpInside)
+        themeCard.content.addArrangedSubview(lockButton)
         stack.addArrangedSubview(themeCard)
 
         stack.addArrangedSubview(iconCard())
@@ -159,15 +169,22 @@ final class WidgetStudioViewController: UIViewController {
         return card
     }
 
-    private func startClock() {
-        timer?.invalidate()
-        let clock = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+    /// Opens the Lock Screen design picker. The saved appearance is handed back and stored through
+    /// SettingsStore, which also publishes it to the widget and repaints the previews.
+    @objc private func lockScreenTapped() {
+        let controller = LockScreenStudioViewController(appearance: SettingsStore.shared.widgetAppearance)
+        controller.onSave = { [weak self] appearance in
+            SettingsStore.shared.saveAppearance(appearance)
             self?.render()
+            self?.writeSnapshot()
         }
-        clock.tolerance = 0.2
-        RunLoop.main.add(clock, forMode: .common)
-        timer = clock
+        let navigation = UINavigationController(rootViewController: controller)
+        navigation.modalPresentationStyle = .formSheet
+        AppThemeRefresh.styleNavigationBar(navigation.navigationBar, appearance: AppAppearance.current)
+        present(navigation, animated: true)
     }
+
+    private func startClock() {
 
     /// Writes the shared snapshot when the screen opens, so the widget is not left empty.
     private func writeSnapshot() {
