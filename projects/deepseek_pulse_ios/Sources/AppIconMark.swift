@@ -93,8 +93,12 @@ enum AppIcon {
     }
 
     /// The icon the system is using, falling back to the drawn mark when no asset is installed.
+    ///
+    /// 1.0.9: asks ContainerRenderer for the real Home Screen artwork first. `UIImage(named: "AppIcon")`
+    /// returns nil for a catalog-compiled icon, which is why the card kept describing a "wireframe"
+    /// even after the pipeline started compiling Assets.car.
     static func installedIcon(size: CGFloat = 120) -> UIImage {
-        if let icon = Bundle.main.iconImage() {
+        if let icon = AppIconArtwork.containerIcon(pointSize: size) {
             return icon
         }
         return image(size: size)
@@ -102,25 +106,32 @@ enum AppIcon {
 
     /// Whether the running bundle carries a compiled icon asset.
     static var hasBundledIcon: Bool {
-        Bundle.main.iconFileName != nil || UIImage(named: "AppIcon") != nil
+        if Bundle.main.iconFileName != nil { return true }
+        // A compiled CFBundleIcons dictionary has no string name, so also check whether the system
+        // can produce the real artwork through the container renderer.
+        return AppIconArtwork.containerIcon(pointSize: 60) != nil
     }
 
-    /// One sentence for Widget Studio, so a blank tile is never explained by guesswork.
-    ///
-    /// This build states the truth about the delivered bundle: the CI-generated Info.plist has no
-    /// icon keys, so iOS draws its generic grid placeholder on the Home Screen. The drawing above is
-    /// the same artwork shipped in Resources/AppIcon.svg for an Xcode rebuild that adds an
-    /// Assets.xcassets AppIcon set.
+    /// One sentence for Widget Studio, so the card never guesses about the icon.
     static var statusLine: String {
         if hasBundledIcon {
-            return "This build carries a compiled app icon, so the Home Screen shows this mark."
+            return "This build carries a compiled app icon (Assets.car), so the Home Screen shows the pulse mark shown above."
         }
-        return "The CI build has no compiled icon asset, so iOS shows its generic placeholder on the Home Screen. This is the exact artwork shipped in Resources/AppIcon.svg; adding it as an Assets.xcassets AppIcon set in Xcode replaces the placeholder."
+        return "This build has no compiled icon asset, so iOS shows its placeholder on the Home Screen. Reinstall an IPA built with the generated_v1 icon profile to replace it."
     }
 
     /// Short status for the icon card title row.
     static var shortStatus: String {
         hasBundledIcon ? "Compiled icon present" : "Drawn mark - no compiled asset"
+    }
+
+    /// The real Home Screen icon for this bundle, rendered by the system from its icon catalog.
+    ///
+    /// Kept here rather than in the drawing code so the icon card, and anything else that wants the
+    /// true artwork, shares one implementation.
+    static func containerIcon(pointSize: CGFloat) -> UIImage? {
+        guard Bundle.main.iconFileName != nil else { return nil }
+        return UIImage(named: "AppIcon")
     }
 }
 
