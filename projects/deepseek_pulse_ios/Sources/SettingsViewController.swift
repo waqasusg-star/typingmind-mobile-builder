@@ -474,6 +474,26 @@ final class SettingsViewController: UIViewController {
         alert("Notice dismissed", "Reopen Settings any time; the verified schedule and prices stay in place.")
     }
 
+    /// Parses an "HH:MM" field into a minute of the day.
+    ///
+    /// 1.0.9: this helper was referenced by the window rows but had never been written, so the file did
+    /// not compile. It accepts "H:MM", "HH:MM" and a bare hour, and rejects anything outside 0...1440
+    /// so a typo can never produce an out-of-range schedule.
+    private func parseMinute(_ text: String) -> Int? {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return nil }
+        let parts = cleaned.split(separator: ":")
+        guard let hour = Int(parts[0]), hour >= 0, hour <= 24 else { return nil }
+        var minute = 0
+        if parts.count > 1 {
+            guard let value = Int(parts[1]), value >= 0, value < 60 else { return nil }
+            minute = value
+        }
+        let total = hour * 60 + minute
+        guard total >= 0, total <= PricingSchedule.minutesPerDay else { return nil }
+        return total
+    }
+
     @objc private func scheduleToggleChanged() {
         updateLocalNote()
     }
