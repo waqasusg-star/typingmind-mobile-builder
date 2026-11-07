@@ -96,6 +96,34 @@ final class WidgetStudioViewController: UIViewController {
         stack.addArrangedSubview(statusLabel)
     }
 
+    /// Shows the mark this build carries and says plainly whether iOS received an icon asset.
+    private func iconCard() -> UIView {
+        let card = CardView()
+        card.content.addArrangedSubview(Labels.title("App icon"))
+
+        let icon = UIImageView(image: AppIcon.installedIcon(size: 120))
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        icon.layer.cornerRadius = 22
+        icon.layer.cornerCurve = .continuous
+        icon.clipsToBounds = true
+        icon.widthAnchor.constraint(equalToConstant: 88).isActive = true
+        icon.heightAnchor.constraint(equalToConstant: 88).isActive = true
+
+        let text = UIStackView()
+        text.axis = .vertical
+        text.spacing = 6
+        text.addArrangedSubview(Labels.caption(AppIcon.hasBundledIcon
+                                               ? "This build includes a compiled app icon, so the Home Screen shows this mark."
+                                               : "This build ran without a compiled icon asset. The mark above is drawn by the app; reinstalling from the newer IPA replaces the blank icon."))
+
+        let row = UIStackView(arrangedSubviews: [icon, text])
+        row.axis = .horizontal
+        row.spacing = 14
+        row.alignment = .center
+        card.content.addArrangedSubview(row)
+        return card
+    }
+
     private func titledCard(title: String, caption: String, content: UIView, height: CGFloat) -> UIView {
         let card = CardView()
         card.content.addArrangedSubview(Labels.title(title))
