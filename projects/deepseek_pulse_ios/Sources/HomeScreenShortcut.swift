@@ -47,7 +47,7 @@ enum AppIconServeResult: Equatable {
 final class AppIconLoopbackServer {
 
     /// Port pinned to a high, unprivileged value; if it is busy the next port is tried.
-    private static let basePort: UInt16 = 8731
+    static let basePort: UInt16 = 8731
     private static let portAttempts = 8
 
     private var listener: AnyObject?
@@ -67,7 +67,8 @@ final class AppIconLoopbackServer {
 
     /// The HTML Safari will show. It declares the manifest icons Safari needs for the tile, and it
     /// stores nothing: no key, no balance, no identifier.
-    static let page = """<!doctype html>
+    static let page = """
+<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
