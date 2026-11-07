@@ -1,51 +1,41 @@
 package com.waqas.hdrama
 
 import android.content.Context
-import android.content.res.ColorStateList
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.RippleDrawable
 import android.view.Gravity
-import android.view.View
-import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
-import android.widget.TextView
 
 /**
  * Floating navigation dock (premium).
- * Glass surface, amber primary Play target, and a compact centred width on tablets.
+ * Glass surface with a compact centred width on tablets and a 48dp minimum target.
+ * MainActivity still supplies the buttons so navigation behaviour is unchanged.
  */
-class Dock : LinearLayout {
-    constructor(context: Context) : super(context) { build() }
+class Dock(context: Context) : LinearLayout(context) {
 
-    private lateinit var cells: List<Pair<String, ImageButton>>
-
-    private fun build() {
+    init {
         orientation = HORIZONTAL
         gravity = Gravity.CENTER
         setPadding(context.dp(10), context.dp(8), context.dp(10), context.dp(8))
-        background = Hd.glassFrame(context)
-        elevation = context.dp(12).toFloat()
+        background = Premium.frame(context)
+        elevation = context.dp(Premium.DOCK_ELEVATION_DP).toFloat()
         clipToOutline = true
         contentDescription = "Navigation dock"
     }
 
-    companion object {
-        /** Reference width so the dock stays a compact island on wide windows. */
-        fun maxWidth(context: Context): Int = context.dp(440)
-    }
-}
-
-/** Amber-tinted status pill used above the dock to reflect page state. */
-class DockPill(context: Context) : TextView(context) {
-    init {
-        gravity = Gravity.CENTER
-        textSize = 11f
-        letterSpacing = 0.08f
-        setTextColor(Hd.muted)
-        includeFontPadding = false
-        background = Hd.pill(context, 0xd90b0d13.toInt())
-        setPadding(context.dp(14), context.dp(8), context.dp(14), context.dp(8))
+    /** Keep the dock a compact island instead of stretching across wide windows. */
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val width = minOf(MeasureSpec.getSize(widthMeasureSpec), context.dp(Premium.DOCK_MAX_WIDTH_DP))
+        val visible = (0 until childCount).map { getChildAt(it) }.filter { it.visibility != GONE }
+        val usable = (width - paddingLeft - paddingRight).coerceAtLeast(1)
+        val target = minOf(context.dp(Premium.TARGET_DP), usable / visible.size.coerceAtLeast(1))
+            .coerceAtLeast(context.dp(Premium.MIN_TARGET_DP))
+        visible.forEach { cell ->
+            ((cell as? LinearLayout)?.getChildAt(0) as? ImageButton)?.let { button ->
+                if (button.layoutParams.width != target) {
+                    button.layoutParams = (button.layoutParams as LayoutParams).apply { this.width = target; height = target }
+                }
+            }
+        }
+        super.onMeasure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY), heightMeasureSpec)
     }
 }
