@@ -565,6 +565,10 @@ final class DashboardViewController: UIViewController {
                                  : "Add your DeepSeek API key in Settings to load your account balance.",
                                  tone: .neutral)
                 self.render()
+                if self.pendingWidgetAnswer {
+                    self.pendingWidgetAnswer = false
+                    self.completeWidgetRequest()
+                }
                 return
             }
 
@@ -581,6 +585,10 @@ final class DashboardViewController: UIViewController {
                 self.showMessage(error.message, tone: .warning)
             }
             self.render()
+            if self.pendingWidgetAnswer {
+                self.pendingWidgetAnswer = false
+                self.completeWidgetRequest()
+            }
         }
     }
 
