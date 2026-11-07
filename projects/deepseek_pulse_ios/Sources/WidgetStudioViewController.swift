@@ -62,6 +62,8 @@ final class WidgetStudioViewController: UIViewController {
         intro.content.addArrangedSubview(Labels.caption("This build contains the DeepSeekPulseWidgets extension. The cards below are in-app previews drawn from the same WidgetPlanner state as the real widget, so what you see here is what the Home Screen widget computes."))
         stack.addArrangedSubview(intro)
 
+        stack.addArrangedSubview(iconCard())
+
         let addSteps = CardView()
         addSteps.content.addArrangedSubview(Labels.title("Add the widget"))
         addSteps.content.addArrangedSubview(Labels.caption("1. Open this app once so it saves your balance and schedule for the widget."))
