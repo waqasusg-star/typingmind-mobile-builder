@@ -118,8 +118,23 @@ struct PulseEntry: TimelineEntry {
 
     /// The available balance, exactly as the app formatted it. When there is no balance this is an
     /// instruction rather than a bare "No key".
+    /// Why the widget wants the app opened. Nil when nothing needs refreshing, or when the widget is
+    /// still inside the handshake cooldown so a tap would loop.
+    computedRefreshReason: WidgetRefreshReason? {
+        let handshake = WidgetRefreshLedger.read()
+        let wanted = WidgetRefreshHandshakeRules.shouldRequest(state: envelope.state,
+                                                              hasBalance: hasBalance,
+                                                              lastRequestAt: handshake.requestedAt,
+                                                              lastAnswerAt: handshake.answeredAt,
+                                                              now: date)
+        guard wanted else { return nil }
+        return WidgetRefreshHandshakeRules.reason(state: envelope.state, hasBalance: hasBalance)
+    }
+
     var balanceText: String {
-        let slot = PulseBalanceWording.slot(hasBalance: hasBalance, hasAPIKey: hasAPIKey)
+        let slot = PulseBalanceWording.slot(hasBalance: hasBalance,
+                                            hasAPIKey: hasAPIKey,
+                                            hasAPIKeyKnown: envelope.hasAPIKeyKnown)
         return slot.isEmpty ? envelope.balanceLine() : slot
     }
 
@@ -129,6 +144,7 @@ struct PulseEntry: TimelineEntry {
             return PulseBalanceWording.unavailableCaption(state: envelope.state)
         }
         return PulseBalanceWording.caption(hasBalance: hasBalance,
+                                           hasAPIKeyKnown: envelope.hasAPIKeyKnown,
                                            hasAPIKey: hasAPIKey,
                                            fetchedAtAge: envelope.payload?.balanceFetchedAt.map {
                                                max(0, date.timeIntervalSince($0))
@@ -142,7 +158,7 @@ struct PulseEntry: TimelineEntry {
         if hasBalance, let fetched = envelope.payload?.balanceFetchedAt {
             return ClockFormat.relative(fetched, now: date)
         }
-        return hasAPIKey ? "Not loaded" : "Add key"
+        return envelope.hasAPIKeyKnown && !hasAPIKey ? "Add key" : "Tap to load"
     }
 
     var grantedText: String {
