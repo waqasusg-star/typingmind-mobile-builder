@@ -8,7 +8,7 @@
   "version": "1.0.6",
   "build_number": "7",
   "minimum_ios": "15.0",
-  "description": "DeepSeek Pulse 1.0.6: theme-aware app colours",
+  "description": "DeepSeek Pulse 1.0.6: app icon rendered from code and installed as a Home Screen shortcut",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
