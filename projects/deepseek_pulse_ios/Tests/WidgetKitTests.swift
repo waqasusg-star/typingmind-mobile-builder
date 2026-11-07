@@ -536,6 +536,98 @@ func widgetKitChecks() throws {
     try expect(themedEnvelope.appearance.mediumDesign == .ledger, "the medium design survives encode/decode")
     try expect(!themedEnvelope.appearance.showBalance, "the balance switch survives encode/decode")
 
+    // MARK: 1.0.9 — Lock Screen designs
+
+    try expect(LockScreenStyle.all.count == 7, "seven accessory designs ship (3 rectangular, 2 circular, 2 inline)")
+    try expect(LockScreenStyle.rectangularFamily.count == 3, "three rectangular designs")
+    try expect(LockScreenStyle.circularFamily.count == 2, "two circular designs")
+    try expect(LockScreenStyle.inlineFamily.count == 2, "two inline designs")
+    try expect(Set(LockScreenStyle.all.map { $0.code }).count == 7, "lock screen design codes are unique")
+    for style in LockScreenStyle.all {
+        try expect(LockScreenStyle.style(code: style.code) == style, "design " + style.code + " resolves from its code")
+        try expect(!style.summary.isEmpty, "design " + style.code + " has a summary for the picker")
+        let defaults = LockScreenAppearance.defaultAppearance
+        try expect(defaults.style(forFamily: style.family).family == style.family,
+                   "the default for " + style.family + " belongs to that family")
+    }
+    // A choice from the wrong family is clamped instead of blanking an accessory slot.
+    let mismatched = LockScreenAppearance(rectangular: .gauge, circular: .ribbon, inline: .compact)
+    try expect(mismatched.rectangular == .ribbon, "a circular style cannot become the rectangular design")
+    try expect(mismatched.circular == .gauge, "a rectangular style cannot become the circular design")
+    try expect(mismatched.inline == .sentence, "a rectangular style cannot become the inline design")
+
+    // The lock screen choice survives a payload round trip, and an older payload still decodes.
+    let lockAppearance = WidgetAppearance(themeID: "neon",
+                                          smallDesign: .aurora,
+                                          mediumDesign: .dashboard,
+                                          lockScreen: LockScreenAppearance(rectangular: .compact,
+                                                                           circular: .countdown,
+                                                                           inline: .timeOnly),
+                                          artwork: "grid",
+                                          showBalance: true,
+                                          showRefresh: true,
+                                          showDayBand: true)
+    let lockPayload = WidgetSnapshotPayload.make(writtenAt: now, balanceFetchedAt: nil, balance: nil,
+                                                 schedule: schedule, models: [], hasAPIKey: true,
+                                                 appearance: lockAppearance)
+    let lockEnvelope = WidgetCacheCodec.decode(try WidgetCacheCodec.encode(lockPayload), now: now)
+    try expect(lockEnvelope.appearance.lockScreen.rectangular == .compact, "the rectangular design survives encode/decode")
+    try expect(lockEnvelope.appearance.lockScreen.circular == .countdown, "the circular design survives encode/decode")
+    try expect(lockEnvelope.appearance.lockScreen.inline == .timeOnly, "the inline design survives encode/decode")
+
+    let legacyAppearance = WidgetAppearance(themeID: "mono", smallDesign: .aurora, mediumDesign: .dashboard,
+                                            artwork: "none", showBalance: true, showRefresh: true, showDayBand: true)
+    let legacyPayload = WidgetSnapshotPayload.make(writtenAt: now, balanceFetchedAt: nil, balance: nil,
+                                                   schedule: schedule, models: [], hasAPIKey: true,
+                                                   appearance: legacyAppearance)
+    let legacyEnvelope = WidgetCacheCodec.decode(try WidgetCacheCodec.encode(legacyPayload), now: now)
+    try expect(legacyEnvelope.appearance.lockScreen == LockScreenAppearance.defaultAppearance,
+               "a payload without lock screen choices falls back to the default designs")
+
+    // Lock Screen wording is pure and never mentions the key.
+    let sample = WidgetPlanner.snapshot(schedule: schedule, at: now)
+    let lockState = LockScreenText.stateWord(snapshot: sample, discountsEnabled: schedule.discountsEnabled)
+    try expect(!lockState.lowercased().contains("key"), "the accessory state word never mentions a key")
+    try expect(LockScreenText.peakProgress(minutesLeft: 0, totalMinutes: 0) == 0, "no peak window means no progress")
+    try expect(LockScreenText.peakProgress(minutesLeft: 120, totalMinutes: 60) == 1, "progress is clamped to one")
+    try expect(LockScreenText.peakProgress(minutesLeft: -5, totalMinutes: 60) == 0, "progress never goes negative")
+    try expect(LockScreenText.peakLeft(minutes: 0) == "No peak left today", "zero peak minutes is stated plainly")
+    try expect(LockScreenText.peakLeft(minutes: 1440) == "Peak all day", "a full day of peak is stated plainly")
+    try expect(LockScreenText.dataFlag(state: .fresh) == nil, "fresh data shows no flag")
+    try expect(LockScreenText.dataFlag(state: .stale) == "CACHED", "stale data is labelled")
+
+    // MARK: 1.0.9 — themed artwork
+
+    for artwork in PulseThemes.artworkOptions {
+        let layer = PulseThemesArtwork.layer(artwork: artwork,
+                                             theme: PulseThemes.fallback,
+                                             state: .offPeak,
+                                             width: 160,
+                                             height: 160)
+        if artwork == "none" || artwork == "gradient" {
+            try expect(layer.isEmpty, artwork + " adds no shapes")
+        } else {
+            try expect(!layer.isEmpty, artwork + " produces decoration")
+        }
+    }
+    let dots = PulseThemesArtwork.layer(artwork: "dot", theme: PulseThemes.fallback, state: .peak,
+                                        width: 160, height: 160)
+    try expect(dots.dots.count == 40, "an 8 x 5 dot field produces forty dots")
+    for dot in dots.dots {
+        try expect(dot.x >= 0 && dot.x <= 160 && dot.y >= 0 && dot.y <= 160, "dots stay inside the box")
+        try expect(dot.alpha > 0 && dot.alpha <= 1, "dot alpha is a real opacity")
+    }
+    let wideDots = PulseThemesArtwork.layer(artwork: "dot", theme: PulseThemes.fallback, state: .peak,
+                                            width: 320, height: 160)
+    try expect(wideDots.dots.count == 72, "a wide box subdivides the dot field")
+    let rings = PulseThemesArtwork.layer(artwork: "rings", theme: PulseThemes.fallback, state: .standard,
+                                          width: 160, height: 160)
+    try expect(rings.ellipses.count == 4, "the rings artwork has four outlines")
+    try expect(rings.ellipses[0].alpha > rings.ellipses[3].alpha, "outer rings fade")
+    let emptyArt = PulseThemesArtwork.layer(artwork: "grid", theme: PulseThemes.fallback, state: .standard,
+                                            width: 0, height: 0)
+    try expect(emptyArt.isEmpty, "a zero-sized box draws nothing instead of dividing by zero")
+
     // Report every failing label from this single execution, then fail. Nothing is printed as a pass.
     if !failures.isEmpty {
         throw WidgetKitCheckFailure.failed("failed " + String(failures.count) + " of " + String(checked) + ": " + failures.joined(separator: " | "))
