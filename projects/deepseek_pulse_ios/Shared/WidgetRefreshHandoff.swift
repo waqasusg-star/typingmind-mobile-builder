@@ -21,8 +21,27 @@ enum WidgetHandoffOutcome: Equatable {
 
 enum WidgetRefreshHandoff {
 
-    /// Deep link that simply opens the app. Registered in the generated Info.plist.
+    /// Deep link that opens the app straight on the dashboard.
+    /// Assembled from WidgetPolicy's constants so the scheme cannot drift from Info.plist.
     static var appLink: URL? { WidgetPolicy.deepLinkURL() }
+
+    /// Deep link that opens the app and asks it to refresh the balance immediately.
+    /// Info.plist registers the `com.waqas.deepseekpulse` scheme, so this is the same URL plus a flag.
+    static let refreshQueryItem = "refresh=1"
+    static let refreshPath = "status"
+
+    /// Widget tap target. The widget cannot run code on tap, so it opens the app with refresh=1 and
+    /// the dashboard performs the balance request. Honest, and the only behaviour WidgetKit allows.
+    static var refreshLink: URL? {
+        URL(string: WidgetPolicy.widgetDeepLinkScheme + "://" + refreshPath + "?" + refreshQueryItem)
+    }
+
+    /// True when the app was opened by a widget tap that asked for a refresh.
+    static func wantsRefresh(_ url: URL) -> Bool {
+        guard WidgetPolicy.isWidgetDeepLink(url) else { return false }
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        return items.contains { $0.name == "refresh" && ($0.value ?? "1") == "1" }
+    }
 
     /// How long Widget Studio waits before asking for a second redraw. WidgetKit gives no callback,
     /// so this is a hint, not a guarantee.
