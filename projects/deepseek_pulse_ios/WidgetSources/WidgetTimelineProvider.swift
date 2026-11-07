@@ -261,7 +261,24 @@ struct PulseTimelineProvider: TimelineProvider {
         if entries.isEmpty {
             entries.append(PulseEntry(date: now, envelope: envelope))
         }
+        // 1.0.9: if the widget has nothing current to show, leave a request for the app to answer on
+        // its next launch or foreground. The cooldown lives in WidgetRefreshHandshakeRules, so this
+        // cannot hammer the app; only the timeline build records a request, never a view redraw.
+        recordHandshakeRequest(for: envelope, at: now)
         completion(Timeline(entries: entries, policy: .after(reload)))
+    }
+
+    /// Writes the widget-to-app request when the snapshot needs a refresh and the cooldown allows it.
+    private func recordHandshakeRequest(for envelope: WidgetSnapshotEnvelope, at now: Date) {
+        let ledger = WidgetRefreshLedger.read()
+        let hasBalance = envelope.hasUsableBalance
+        guard WidgetRefreshHandshakeRules.shouldRequest(state: envelope.state,
+                                                       hasBalance: hasBalance,
+                                                       lastRequestAt: ledger.requestedAt,
+                                                       lastAnswerAt: ledger.answeredAt,
+                                                       now: now) else { return }
+        let reason = WidgetRefreshHandshakeRules.reason(state: envelope.state, hasBalance: hasBalance)
+        PulseWidgetHandshake.requestRefresh(reason: reason, at: now)
     }
 
     func makeEntry(at date: Date) -> PulseEntry {
