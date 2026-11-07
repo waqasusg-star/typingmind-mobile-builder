@@ -172,6 +172,11 @@ struct WidgetCacheLocation {
 
 /// Reads and writes the snapshot, preferring the App Group and falling back to the extension's own
 /// file. Every method is total: nothing here throws into a caller and nothing invents data.
+///
+/// 1.0.9 ranking rule: a copy that carries a balance outranks a schedule-only seed even when the seed
+/// is newer. The extension rewrites its own seed on every timeline build, and those seeds used to
+/// win on freshness alone, which is how a phone holding a valid key and a real balance ended up
+/// showing "No key". The newest copy is still preferred among equally complete copies.
 enum WidgetSnapshotStore {
 
     /// Result of a read, with the tier it came from so the UI can say where the data lives.
@@ -182,14 +187,16 @@ enum WidgetSnapshotStore {
 
     static let tiers: [WidgetCacheTier] = [.appGroup, .extensionLocal]
 
-    /// Reads the first tier that holds a decodable payload.
+    /// Reads the best copy available.
     ///
-    /// An incompatible or corrupt App Group file does not stop the search: a good local copy is
-    /// still worth showing. When no tier decodes, the most informative failure is returned
-    /// (groupUnavailable only when neither tier is usable at all).
+    /// A copy with a balance always wins over one without. Among two copies of equal completeness the
+    /// newer one wins; on a tie the earlier tier in `order` wins, which keeps the App Group preferred.
+    /// An incompatible or corrupt file does not stop the search, and the most informative failure is
+    /// returned when nothing decodes at all.
     static func load(location: WidgetCacheLocation = .shared,
                      now: Date = Date(),
                      order: [WidgetCacheTier] = WidgetSnapshotStore.tiers) -> Loaded {
+        var best: Loaded?
         var firstFailure: WidgetSnapshotEnvelope?
         var sawUsableTier = false
 
@@ -198,17 +205,34 @@ enum WidgetSnapshotStore {
             sawUsableTier = true
             guard let data = try? Data(contentsOf: url) else { continue }
             let envelope = WidgetCacheCodec.decode(data, now: now)
-            if envelope.state.isUsable {
-                return Loaded(envelope: envelope, tier: tier)
+            guard envelope.state.isUsable else {
+                if firstFailure == nil { firstFailure = envelope }
+                continue
             }
-            if firstFailure == nil {
-                firstFailure = envelope
+            if let current = best {
+                if isBetter(envelope, than: current.envelope) {
+                    best = Loaded(envelope: envelope, tier: tier)
+                }
+            } else {
+                best = Loaded(envelope: envelope, tier: tier)
             }
         }
+        if let best = best { return best }
         if let firstFailure = firstFailure {
             return Loaded(envelope: firstFailure, tier: nil)
         }
         return Loaded(envelope: .failed(sawUsableTier ? .empty : .groupUnavailable), tier: nil)
+    }
+
+    /// True when `candidate` should replace `current`: a real balance beats no balance, otherwise the
+    /// newer write wins.
+    static func isBetter(_ candidate: WidgetSnapshotEnvelope, than current: WidgetSnapshotEnvelope) -> Bool {
+        if candidate.hasUsableBalance != current.hasUsableBalance {
+            return candidate.hasUsableBalance
+        }
+        let candidateDate = candidate.payload?.writtenAt ?? .distantPast
+        let currentDate = current.payload?.writtenAt ?? .distantPast
+        return candidateDate > currentDate
     }
 
     /// Writes the encoded bytes to one tier. Returns the URL on success.
