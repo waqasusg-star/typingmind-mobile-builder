@@ -5,10 +5,10 @@
   "app_name": "DeepSeek Pulse",
   "bundle_id": "com.waqas.deepseekpulse",
   "scheme": "DeepSeekPulse",
-  "version": "1.0.4",
-  "build_number": "5",
+  "version": "1.0.5",
+  "build_number": "6",
   "minimum_ios": "15.0",
-  "description": "",
+  "description": "Visible Settings and Widgets buttons in the dashboard toolbar, plus an app icon with its own preview in Widget Studio.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
