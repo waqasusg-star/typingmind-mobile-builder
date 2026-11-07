@@ -5,10 +5,10 @@
   "app_name": "DeepSeek Pulse",
   "bundle_id": "com.waqas.deepseekpulse",
   "scheme": "DeepSeekPulse",
-  "version": "1.0.8",
-  "build_number": "9",
+  "version": "1.0.9",
+  "build_number": "10",
   "minimum_ios": "15.0",
-  "description": "1.0.8 (build 9): compiled Home Screen AppIcon, honest widget key-state wording, theme coverage tests.",
+  "description": "1.0.9 (build 10): compiled AppIcon mark fix, redesigned Lock Screen widgets, honest key-state wording with a widget-to-app refresh handoff, and themed artwork on app and widget backgrounds.",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
