@@ -183,9 +183,13 @@ func widgetKitChecks() throws {
     try expect(seededEnvelope.hasUsableBalance == false, "the built-in payload has no usable balance")
     try expect(seeded.balance == nil, "the built-in payload invents no account data")
     // The honest wording layer decides the words: an unknown key state must never claim a key is
-    // missing, and a known-absent key must offer the next action.
-    try expect(PulseBalanceWording.slot(hasBalance: false, hasAPIKey: false) == "Add API key", "a known-absent key asks the user to add one")
-    try expect(PulseBalanceWording.slot(hasBalance: true, hasAPIKey: false) == "", "a real balance always wins over the key wording")
+    // missing, and a known-absent key must offer the next action. A widget cannot read the Keychain,
+    // so the two-argument call uses the legacy (known) reading, which is what 1.0.9 also shows.
+    try expect(PulseBalanceWording.legacySlot(hasBalance: false, hasAPIKey: false) == "Add key in app",
+               "a known-absent key asks the user to add one, using the honest 1.0.9 wording")
+    try expect(PulseBalanceWording.legacySlot(hasBalance: false, hasAPIKey: true) == "Load in app",
+               "a stored key with no balance offers to load it")
+    try expect(PulseBalanceWording.legacySlot(hasBalance: true, hasAPIKey: false) == "", "a real balance always wins over the key wording")
 
     // MARK: Live countdown caption
 
