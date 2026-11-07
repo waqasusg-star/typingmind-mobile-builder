@@ -142,11 +142,26 @@ func widgetKitChecks() throws {
     try expect(seeded.balance == nil, "the built-in payload carries no balance")
     try expect(seeded.balanceFetchedAt == nil, "the built-in payload carries no fetch time")
     try expect(seeded.hasAPIKey == false, "the built-in payload never claims an API key")
+    // 1.0.8: the seed reports the key state as UNKNOWN, not as a positive "no key", unless the
+    // caller passes what the extension last knew. Only a known-absent key may say "Add API key".
+    try expect(seeded.hasAPIKeyKnown == false, "the built-in payload reports the key state as unknown")
+    try expect(PulseBalanceWording.slot(hasBalance: false, hasAPIKey: seeded.hasAPIKey) == "Add API key", "the slot text itself is unchanged")
+    let knownNoKey = WidgetSnapshotPayload.builtIn(now: now, appearance: nil, hasAPIKey: false, hasAPIKeyKnown: true)
+    try expect(knownNoKey.hasAPIKeyKnown, "a carried-over known state survives a reseed")
+    try expect(WidgetCacheCodec.envelope(for: knownNoKey, now: now).hasAPIKeyKnown, "the known state round-trips through the envelope")
+    let unknownKey = WidgetSnapshotPayload.builtIn(now: now, appearance: nil)
+    try expect(!WidgetCacheCodec.envelope(for: unknownKey, now: now).hasAPIKeyKnown, "an unknown state stays unknown through the envelope")
     try expect(seeded.schedule == RateSeeds.schedule, "the built-in payload carries the verified schedule")
     try expect(!seeded.models.isEmpty, "the built-in payload carries the rate labels")
     let seededEnvelope = WidgetCacheCodec.envelope(for: seeded, now: now)
     try expect(seededEnvelope.state == .fresh, "the built-in payload decodes as fresh")
-    try expect(seededEnvelope.balanceLine() == "No key", "the built-in payload states there is no key, it does not fake a balance")
+    try expect(seededEnvelope.balanceLine() == "--", "a schedule-only seed shows a placeholder instead of a fake balance")
+    try expect(seededEnvelope.hasUsableBalance == false, "the built-in payload has no usable balance")
+    try expect(seeded.balance == nil, "the built-in payload invents no account data")
+    // The honest wording layer decides the words: an unknown key state must never claim a key is
+    // missing, and a known-absent key must offer the next action.
+    try expect(PulseBalanceWording.slot(hasBalance: false, hasAPIKey: false) == "Add API key", "a known-absent key asks the user to add one")
+    try expect(PulseBalanceWording.slot(hasBalance: true, hasAPIKey: false) == "", "a real balance always wins over the key wording")
 
     // MARK: Live countdown caption
 
