@@ -2,17 +2,10 @@ import Foundation
 import WidgetKit
 import SwiftUI
 
-// DeepSeek Pulse — the real WidgetKit views.
+// DeepSeek Pulse — shared WidgetKit pieces: theme colours, countdown, balance, refresh, band.
 //
-// Ten designs, all drawn from the same WidgetPlanner state:
-//   small  : Aurora, Vault, Split Column, Ring, Timeline
-//   medium : Dashboard, Ledger, Countdown Hero, Band Hero, Minimal
-//
-// Every design shows the available balance and a refresh affordance, both switchable in Widget
-// Studio. Colours come from the theme in the payload, so the widget follows the app palette.
-//
-// Countdowns use Text(timerInterval:), which iOS renders itself: the number keeps ticking with the
-// app closed, with no extra timeline entries and no per-second work.
+// Ten designs are built from these parts. Colours come from the theme inside the payload, so the
+// widget follows the palette chosen in Widget Studio.
 
 // MARK: - Theme
 
@@ -38,31 +31,13 @@ struct PulseMood {
                        endPoint: .bottomTrailing)
     }
 
-    /// White ink on every dark ramp; the three light ramps are darkened by an overlay first, so the
-    /// same white remains readable.
+    /// White ink on every dark ramp; the light ramps get a darkening overlay first.
     var ink: Color { Color.white }
-    var inkSoft: Color { Color.white.opacity(0.74) }
-    var inkFaint: Color { Color.white.opacity(0.56) }
 
-    var stateColour: Color {
-        get { PulseMood.colour(theme.offPeak) }
-    }
-
-    func accent(for state: PricingState) -> Color {
-        switch state {
-        case .peak: return PulseMood.colour(theme.peak)
-        case .offPeak: return PulseMood.colour(theme.offPeak)
-        case .standard: return PulseMood.colour(theme.textDim)
-        }
-    }
-
-    /// Darkening needed over a light ramp so white text keeps contrast.
+    /// Darkening applied over a light ramp so white text keeps contrast.
     var rampOverlay: Double {
         PulseThemes.luminance(theme.background) > 0.55 ? 0.34 : 0.0
     }
-
-    var balanceColour: Color { PulseMood.colour(theme.text) }
-    var dangerColour: Color { PulseMood.colour(theme.danger) }
 }
 
 // MARK: - Shared pieces
@@ -138,7 +113,7 @@ struct PulseBalanceLine: View {
 
 /// The refresh affordance.
 ///
-/// A WidgetKit widget cannot run code on tap, but iOS *does* open the widgetURL. This pill therefore
+/// A WidgetKit widget cannot run code on tap, but iOS does open the widgetURL. This pill therefore
 /// says exactly what it does: tapping anywhere on the widget opens DeepSeek Pulse, which refreshes
 /// the balance and rewrites the snapshot. No request is invented on the Home Screen.
 struct PulseRefreshAffordance: View {
@@ -227,7 +202,7 @@ struct PulseDayBand: View {
     }
 }
 
-/// A tiny two-line statistic used by the layouts that summarise more than one number.
+/// A tiny statistic for the layouts that summarise more than one number.
 struct PulseStat: View {
     var title: String
     var value: String
@@ -244,6 +219,46 @@ struct PulseStat: View {
                 .foregroundColor(ink.opacity(0.94))
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
+        }
+    }
+}
+
+// MARK: - Backgrounds
+
+extension View {
+    /// Pre-iOS 17 background for Home Screen widget containers.
+    func pulseBackground(mood: PulseMood, state: PricingState, overlay: Double) -> some View {
+        self.background(
+            ZStack {
+                mood.gradient(for: state)
+                if overlay > 0 { Color.black.opacity(overlay) }
+            }
+        )
+    }
+
+    /// iOS 17+ wants the container background declared through the modifier; without it the gallery
+    /// shows an "adopt container background" placeholder instead of the widget.
+    @ViewBuilder
+    func containerBackgroundPulse(mood: PulseMood, state: PricingState, overlay: Double) -> some View {
+        if #available(iOSApplicationExtension 17.0, *) {
+            self.containerBackground(for: .widget) {
+                ZStack {
+                    mood.gradient(for: state)
+                    if overlay > 0 { Color.black.opacity(overlay) }
+                }
+            }
+        } else {
+            self.pulseBackground(mood: mood, state: state, overlay: overlay)
+        }
+    }
+
+    /// Marks content privacy sensitive from iOS 16 on; a no-op on iOS 15 so the target stays 15.
+    @ViewBuilder
+    func privacySensitiveIfAvailable() -> some View {
+        if #available(iOSApplicationExtension 16.0, *) {
+            self.privacySensitive(true)
+        } else {
+            self
         }
     }
 }
