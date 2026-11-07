@@ -8,7 +8,7 @@
   "version": "1.0.6",
   "build_number": "7",
   "minimum_ios": "15.0",
-  "description": "DeepSeek Pulse 1.0.6: in-app app icon, available balance and refresh on the widget, 16 color themes, 10 widget designs",
+  "description": "DeepSeek Pulse 1.0.6: 16 colour themes for the app and the widget",
   "policy_test_sources": [
     "Sources/RequestPolicy.swift",
     "Tests/PolicyTests.swift"
