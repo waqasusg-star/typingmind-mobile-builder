@@ -5,8 +5,8 @@
   "app_name": "DeepSeek Pulse",
   "bundle_id": "com.waqas.deepseekpulse",
   "scheme": "DeepSeekPulse",
-  "version": "1.0.7",
-  "build_number": "8",
+  "version": "1.0.8",
+  "build_number": "9",
   "minimum_ios": "15.0",
   "description": "1.0.7 (build 8): Settings save path with Keychain-verified key storage.",
   "policy_test_sources": [
@@ -18,5 +18,6 @@
     "name": "DeepSeekPulseWidgets",
     "bundle_id": "com.waqas.deepseekpulse.widgets",
     "app_group_id": "group.com.waqas.deepseekpulse"
-  }
+  },
+  "app_icon_profile": "generated_v1"
 }
